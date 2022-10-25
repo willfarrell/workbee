@@ -19,7 +19,7 @@ import {
   isResponse,
   postMethod,
   postMessageToFocused
-} from '@workbee/core'
+} from '@work-bee/core'
 
 const headerAuthorization = 'Authorization'
 const sessionMiddleware = ({

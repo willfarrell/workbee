@@ -26,13 +26,13 @@ A tiny ServiceWorker for secure web applications.
 ### Install
 
 ```bash
-npm install @workbee/core
+npm install @work-bee/core
 ```
 
 ### Basic Setup
 
 ```js
-import { compileConfig, installEvent, activateEvent, fetchEvent, strategyCacheFirst } from '@workbee/core'
+import { compileConfig, installEvent, activateEvent, fetchEvent, strategyCacheFirst } from '@work-bee/core'
 
 const config = compileConfig({
   cachePrefix, '1-',
@@ -75,7 +75,7 @@ addEventListener('fetch', (event) => {
 ### BackgroundFetch (future)
 
 ```js
-import { backgroundFetchSuccessEvent, backgroundFetchFailEvent } from '@workbee/core'
+import { backgroundFetchSuccessEvent, backgroundFetchFailEvent } from '@work-bee/core'
 
 ...
 
@@ -222,9 +222,9 @@ sequenceDiagram
 ### Request Partitioning
 
 ```javascript
-import { compileConfig } @workbee/core
-import { installEvent, activateEvent, fetchEvent } from '@workbee/events'
-import { strategyCacheFirst, strategyPartition } from '@workbee/strategies'
+import { compileConfig } @work-bee/core
+import { installEvent, activateEvent, fetchEvent } from '@work-bee/events'
+import { strategyCacheFirst, strategyPartition } from '@work-bee/strategies'
 
 const config = compileConfig({
   cachePrefix, 'sw-VERSION-',
@@ -302,7 +302,7 @@ https://github.com/mdn/serviceworker-cookbook
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkFirst } from '@workbee/core'
+import { strategyNetworkFirst } from '@work-bee/core'
 
 const config = {
   strategy: strategyNetworkFirst
@@ -325,7 +325,7 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheOnly } from '@workbee/core'
+import { strategyCacheOnly } from '@work-bee/core'
 
 const config = {
   strategy: strategyCacheOnly
@@ -348,7 +348,7 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyStaleWhileRevalidate } from '@workbee/core'
+import { strategyStaleWhileRevalidate } from '@work-bee/core'
 
 const config = {
   strategy: strategyStaleWhileRevalidate
@@ -375,8 +375,8 @@ TODO refresh middleware, add to strategyStaleWhileRevalidate?
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkOnly, strategyCacheOnly } from '@workbee/core'
-import fallbackMiddleware from '@workbee/fallback'
+import { strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
+import fallbackMiddleware from '@work-bee/fallback'
 
 const fallback = fallbackMiddleware({ path: '/path/to/fallback' })
 const config = {
@@ -415,8 +415,8 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkOnly, strategyCacheOnly } from '@workbee/core'
-import fallbackMiddleware from '@workbee/fallback'
+import { strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
+import fallbackMiddleware from '@work-bee/fallback'
 
 const fallback = fallbackMiddleware({
   path: '/path/to/offline',
@@ -452,7 +452,7 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst, strategyCacheOnly } from '@workbee/core'
+import { strategyCacheFirst, strategyCacheOnly } from '@work-bee/core'
 
 const config = {
   precache: {
@@ -484,7 +484,7 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst, strategyCacheOnly } from '@workbee/core'
+import { strategyCacheFirst, strategyCacheOnly } from '@work-bee/core'
 
 const config = {
   precache: {
@@ -513,7 +513,7 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-/*import { strategyLocalDownload } from '@workbee/core'
+/*import { strategyLocalDownload } from '@work-bee/core'
 
 const config = {
   routes: [
@@ -559,8 +559,8 @@ TODO need to understand more
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst } from '@workbee/core'
-import { offlineMiddleware } from '@workbee/offline'
+import { strategyCacheFirst } from '@work-bee/core'
+import { offlineMiddleware } from '@work-bee/offline'
 
 const offline = offlineMiddleware({ pollDelay: 0 })
 const config = {
@@ -595,7 +595,7 @@ const messageEvents = {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst } from '@workbee/core'
+import { strategyCacheFirst } from '@work-bee/core'
 
 const config = {
   strategy: strategyCacheFirst
@@ -624,7 +624,7 @@ import {
   eventActivate,
   eventFetch,
   cacheOverrideEvent
-} from '@workbee/core'
+} from '@work-bee/core'
 
 const config = compileConfig({
   strategy: strategyNetworkFirst

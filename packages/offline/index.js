@@ -11,7 +11,7 @@ import {
   putMethod,
   patchMethod,
   deleteMethod
-} from '@workbee/core'
+} from '@work-bee/core'
 
 const offlineMiddleware = ({
   methods,

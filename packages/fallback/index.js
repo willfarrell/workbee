@@ -4,7 +4,7 @@ import {
   strategyCacheFirst,
   newRequest,
   isResponse
-} from '@workbee/core'
+} from '@work-bee/core'
 
 const fallbackMiddleware = ({
   pathPattern,

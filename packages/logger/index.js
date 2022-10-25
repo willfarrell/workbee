@@ -1,5 +1,5 @@
 /* eslint-env: serviceworker */
-import { headersGetAll, consoleLog } from '@workbee/core'
+import { headersGetAll, consoleLog } from '@work-bee/core'
 const defaults = {
   logger: (when, request, response, event, config) => {
     consoleLog(when, request.url, config.strategy.name, {

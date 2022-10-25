@@ -1,4 +1,4 @@
-import { addHeaderToResponse, isResponse } from '@workbee/core'
+import { addHeaderToResponse, isResponse } from '@work-bee/core'
 
 const cacheControlMiddleware = ({ cacheControl }) => {
   const afterNetwork = (request, response, event, config) => {

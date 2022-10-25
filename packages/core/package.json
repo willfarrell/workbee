@@ -1,6 +1,6 @@
 {
-  "name": "@workbee/core",
-  "version": "0.0.0",
+  "name": "@work-bee/core",
+  "version": "0.0.1",
   "description": "workbee service worker strategies",
   "type": "module",
   "publishConfig": {
@@ -34,5 +34,5 @@
   ],
   "author": "willfarrell",
   "license": "MIT",
-  "gitHead": "f4b54d668ed1229af4ed8bb60acb3e2b90e6b4cf"
+  "gitHead": "897cf8176c4df45d4ac0150283a37a5a52dd9199"
 }

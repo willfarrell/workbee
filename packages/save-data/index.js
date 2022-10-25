@@ -1,5 +1,5 @@
 /* eslint-env: serviceworker */
-import { strategyCacheOnly } from '@workbee/core'
+import { strategyCacheOnly } from '@work-bee/core'
 
 const saveDataMiddleware = ({ saveDataStrategy } = {}) => {
   const before = (request, event, config) => {
