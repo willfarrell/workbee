@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+mkdir -p dist
+cp -r static/ dist/
+
+# --minify
+node_modules/.bin/esbuild --platform=browser --format=esm dist/sw.js --bundle --sourcemap=external --allow-overwrite --outfile=dist/sw.js

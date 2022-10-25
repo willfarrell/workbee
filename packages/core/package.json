@@ -1,0 +1,37 @@
+{
+  "name": "@workbee/core",
+  "version": "0.0.0",
+  "description": "workbee service worker strategies",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.js",
+  "module": "./index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib/"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "workbee",
+    "service",
+    "worker",
+    "sw",
+    "strategies",
+    "cache",
+    "network"
+  ],
+  "author": "willfarrell",
+  "license": "MIT"
+}

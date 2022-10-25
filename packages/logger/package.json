@@ -1,0 +1,39 @@
+{
+  "name": "@workbee/loggger",
+  "version": "0.0.0",
+  "description": "logger workbee service worker middleware",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./index.js",
+  "module": "./index.js",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@workbee/core": "0.0.0"
+  },
+  "keywords": [
+    "workbee",
+    "service",
+    "worker",
+    "sw",
+    "strategies",
+    "cache",
+    "network"
+  ],
+  "author": "willfarrell",
+  "license": "MIT"
+}

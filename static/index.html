@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>workbee</title>
+  </head>
+  <body>
+    <h1>ServiceWorker</h1>
+
+    <script type="module">
+      if ('serviceWorker' in navigator) {
+        const sw = navigator.serviceWorker
+        const reg = await sw.register('/sw.js', {
+          /*type: 'module',*/ scope: '/'
+        })
+
+        sw.addEventListener('message', async (event) => {
+          if (event.origin !== location.origin) return
+          if (reg.active) return
+          await swEvents[event]()
+        })
+
+        const swEvents = {
+          update: () => {
+            // TODO
+          }
+        }
+
+        ononline = () => {
+          sw.controller.postMessage({
+            type: 'online'
+          })
+        }
+        onoffline = () => {}
+
+        //while(!reg.active) {}
+        /* try {
+        const response = await fetch('/sample.csv')
+        console.log(await response.text()) // TypeError: Failed to fetch
+      } catch (e) {
+        console.error(e)
+      }*/
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        console.log(document.visibilityState) // for session timeout
+      })
+
+      // UI
+      const addButton = (type, name) => {
+        const button = document.createElement('button')
+        button.innerText = name
+        button.addEventListener('click', () => {
+          let path = `${type}/${name}`
+          const options = { method: 'GET', headers: {} }
+          // if (name === 'strategyLocalDownload') {
+          //   path += '/download.json'
+          //   options.method = 'POST'
+          //   options.headers['Content-Type'] = 'application/json'
+          //   options.body = '[1,2,3,4,5]'
+          // }
+          if (name === 'offlineMiddleware') {
+            options.method = 'POST'
+          }
+          if (name === 'saveDataMiddleware') {
+            options.headers['Save-Data'] = 'on'
+          }
+          console.log(`fetch('${path}',`, options, ')')
+          fetch(
+            new Request(path, {
+              ...options,
+              headers: new Headers(options.headers)
+            })
+          )
+            .then((response) => response.text())
+            .catch((e) => e.message)
+            .then((text) =>
+              console.log(`fetch('${path}',`, options, ') =>', text)
+            )
+        })
+        document.body.appendChild(button)
+      }
+      const strategies = [
+        'strategyNetworkOnly',
+        'strategyCacheOnly',
+        'strategyNetworkFirst',
+        'strategyCacheFirst',
+        'strategyStaleWhileRevalidate',
+        'strategyIgnore',
+        'strategyCacheFirstIgnore',
+        //'strategyLocalDownload',
+        'strategyHTMLPartition',
+        'strategyPartition'
+      ]
+      for (const strategy of strategies) {
+        addButton('strategy', strategy)
+      }
+
+      const middlewares = [
+        'cacheControlMiddleware',
+        'fallbackMiddleware',
+        'offlineMiddleware',
+        'saveDataMiddleware'
+      ]
+      for (const middleware of middlewares) {
+        addButton('middleware', middleware)
+      }
+      //addButton('https://example.org', 'External')
+    </script>
+  </body>
+</html>
