@@ -36,5 +36,9 @@
   ],
   "author": "willfarrell",
   "license": "MIT",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/willfarrell"
+  },
   "gitHead": "897cf8176c4df45d4ac0150283a37a5a52dd9199"
 }

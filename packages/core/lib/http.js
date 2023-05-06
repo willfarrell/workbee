@@ -52,3 +52,5 @@ export const patchMethod = 'PATCH'
 export const deleteMethod = 'DELETE'
 export const headMethod = 'HEAD'
 export const optionsMethod = 'OPTIONS'
+
+export const authorizationHeader = 'Authorization'
