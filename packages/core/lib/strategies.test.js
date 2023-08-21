@@ -405,6 +405,7 @@ test('Strategies', async (t) => {
   )
 
   // *** strategyStaleWhileRevalidate *** //
+
   await t.test(
     'strategyStaleWhileRevalidate: Should resolve 200 from network when no cache',
     async (t) => {
@@ -423,9 +424,9 @@ test('Strategies', async (t) => {
       equal(response.status, 200)
 
       equal(middleware.before.callCount, 1)
-      equal(cache.match.callCount, 1)
       equal(middleware.beforeNetwork.callCount, 1)
       equal(middleware.afterNetwork.callCount, 1)
+      equal(cache.match.callCount, 1)
       equal(cache.put.callCount, 1)
       equal(cache.delete.callCount, 0)
       equal(middleware.after.callCount, 1)
@@ -438,7 +439,7 @@ test('Strategies', async (t) => {
     'strategyStaleWhileRevalidate: Should resolve 200 from cache',
     async (t) => {
       const event = {
-        __request: new Request(`${domain}/404`, {
+        __request: new Request(`${domain}/200`, {
           method: 'GET'
         })
       }
@@ -453,8 +454,8 @@ test('Strategies', async (t) => {
 
       equal(middleware.before.callCount, 1)
       equal(cache.match.callCount, 1)
-      equal(middleware.beforeNetwork.callCount, 1)
-      equal(middleware.afterNetwork.callCount, 1)
+      equal(middleware.beforeNetwork.callCount, 0)
+      equal(middleware.afterNetwork.callCount, 0)
       equal(cache.put.callCount, 0)
       equal(cache.delete.callCount, 0)
       equal(middleware.after.callCount, 1)
@@ -464,7 +465,7 @@ test('Strategies', async (t) => {
   )
 
   await t.test(
-    'strategyStaleWhileRevalidate: Should resolve 200 from network',
+    'strategyStaleWhileRevalidate: Should resolve 200 from cache, revalidates when expired',
     async (t) => {
       const event = {
         __request: new Request(`${domain}/200`, {
@@ -473,7 +474,7 @@ test('Strategies', async (t) => {
       }
       const { cache, middleware, config } = setupMocks(
         strategyStaleWhileRevalidate,
-        `${domain}/cache/notfound`
+        `${domain}/cache/expired`
       )
 
       const response = await fetchInlineStrategy(event.__request, event, config)
@@ -481,9 +482,9 @@ test('Strategies', async (t) => {
       equal(response.status, 200)
 
       equal(middleware.before.callCount, 1)
+      equal(cache.match.callCount, 1)
       equal(middleware.beforeNetwork.callCount, 1)
       equal(middleware.afterNetwork.callCount, 1)
-      equal(cache.match.callCount, 1)
       equal(cache.put.callCount, 1)
       equal(cache.delete.callCount, 0)
       equal(middleware.after.callCount, 1)

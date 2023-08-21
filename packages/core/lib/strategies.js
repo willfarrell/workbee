@@ -1,7 +1,7 @@
 /* eslint-env: serviceworker */
 /* global ReadableStream */
 import { fetchInlineStrategy } from './events.js'
-import { openCaches, cachePut, cacheExpirable } from './cache.js'
+import { openCaches, cachePut, cacheExpired } from './cache.js'
 import {
   newRequest,
   isResponse,
@@ -36,6 +36,7 @@ export const strategyCacheOnly = async (request, event, config) => {
 }
 
 const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/
+// const cacheControlStaleWhileRevalidateRegExp = /(stale-while-revalidate)=([0-9]+)/
 export const strategyNetworkFirst = async (request, event, config) => {
   let response
   try {
@@ -53,10 +54,9 @@ export const strategyNetworkFirst = async (request, event, config) => {
     // Add in Expires header to allow expiry of cache without complex logic
     const cacheControl = response.headers.get('Cache-Control')
 
-    const maxAge =
-      !cacheControl || cacheControl.includes('no-cache')
-        ? 0
-        : Number.parseInt(cacheControl.match(cacheControlMaxAgeRegExp)[2])
+    const maxAge = cacheControl?.includes('max')
+      ? Number.parseInt(cacheControl.match(cacheControlMaxAgeRegExp)[2])
+      : 0
 
     if (maxAge) {
       const responseTime = new Date(response.headers.get('Date')).getTime()
@@ -74,7 +74,7 @@ export const strategyNetworkFirst = async (request, event, config) => {
 
 export const strategyCacheFirst = async (request, event, config) => {
   let response = await strategyCacheOnly(request, event, config)
-  if (cacheExpirable(response)) {
+  if (cacheExpired(response)) {
     // cache expired - spoof undefined to preserve cache in case of network failure
     response = undefined
   }
@@ -85,7 +85,8 @@ export const strategyCacheFirst = async (request, event, config) => {
 
 export const strategyStaleWhileRevalidate = async (request, event, config) => {
   let response = await strategyCacheOnly(request, event, config)
-  if (response) {
+  if (cacheExpired(response)) {
+    // cache expired, update in background
     event.waitUntil(strategyNetworkFirst(request, event, config))
   }
   // cache undefined
@@ -99,7 +100,7 @@ export const strategyIgnore = (request, event, config) => {
 
 export const strategyCacheFirstIgnore = async (request, event, config) => {
   let response = await strategyCacheOnly(request, event, config)
-  if (cacheExpirable(response)) {
+  if (cacheExpired(response)) {
     response = undefined
   }
   response ??= strategyIgnore(request, event, config)

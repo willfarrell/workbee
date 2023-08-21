@@ -45,9 +45,10 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
   return cachePut(cacheKey, request, response, ++retry)
 }
 
-export const cacheExpirable = (response) => {
+export const cacheExpired = (response) => {
   if (!response) return
-  const expiresDate = new Date(response.headers.get('Expires')).getTime()
+  const expires = response.headers.get('Expires')
+  const expiresDate = new Date(expires).getTime()
   const nowDate = Date.now()
   return expiresDate < nowDate
 }
@@ -56,7 +57,7 @@ export const cacheDeleteExpired = async (cacheKey) => {
   const cache = await caches.open(cacheKey)
   const responses = await cache.matchAll('/')
   for (const response of responses ?? []) {
-    if (cacheExpirable(response)) {
+    if (cacheExpired(response)) {
       await cache.delete(response)
     }
   }
