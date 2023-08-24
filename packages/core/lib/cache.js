@@ -58,7 +58,7 @@ export const cacheDeleteExpired = async (cacheKey) => {
   const responses = await cache.matchAll('/')
   for (const response of responses ?? []) {
     if (cacheExpired(response)) {
-      await cache.delete(response)
+      await cache.delete.bind(cache)(response)
     }
   }
 }
