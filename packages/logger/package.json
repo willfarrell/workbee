@@ -1,6 +1,6 @@
 {
   "name": "@work-bee/loggger",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "logger workbee service worker middleware",
   "type": "module",
   "publishConfig": {
@@ -23,7 +23,7 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "@work-bee/core": "0.0.1"
+    "@work-bee/core": "0.0.3"
   },
   "keywords": [
     "workbee",
