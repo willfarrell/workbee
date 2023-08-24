@@ -80,7 +80,7 @@ export const cachesDelete = async (exclude = []) => {
         .filter((existingCacheKey) => {
           return !validCacheSet.has(existingCacheKey)
         })
-        .map(caches.delete)
+        .map(caches.delete.bind(caches))
     )
   })
 }

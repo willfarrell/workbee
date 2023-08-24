@@ -1,6 +1,6 @@
 {
   "name": "@work-bee/session",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "session workbee service worker middleware",
   "type": "module",
   "publishConfig": {
@@ -23,7 +23,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@work-bee/core": "0.0.3"
+    "@work-bee/core": "0.0.4"
   },
   "keywords": [
     "workbee",
