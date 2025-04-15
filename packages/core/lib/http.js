@@ -27,7 +27,7 @@ export const addHeaderToRequest = (request, key, value) => {
 export const isResponse = (response) => response instanceof Response
 export const newResponse = ({ status, url, body }, headersObj) => {
   const headers = headersGetAll(headersObj)
-  headers.date ??= new Date().toString()
+  headers.date ??= new Date().toUTCString()
   const response = new Response(body, { status, headers })
   Object.defineProperty(response, 'url', { value: url })
   return response
