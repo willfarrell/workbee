@@ -63,7 +63,7 @@ export const strategyNetworkFirst = async (request, event, config) => {
       response = addHeaderToResponse(
         response,
         'Expires',
-        new Date(responseTime + maxAge * 1000).toString()
+        new Date(responseTime + maxAge * 1000).toUTCString()
       )
 
       event.waitUntil(cachePut(config.cacheKey, request, response.clone()))
@@ -119,7 +119,7 @@ export const strategyStatic = (response) => {
   const pathname = new URL(request.url).pathname.split('/')
   const filename = pathname[pathname.length - 1]
   return newResponse({status:201, body:request.body},{
-      Date: new Date().toString(),
+      Date: new Date().toUTCString(),
       'Content-Type': request.headers.get('Content-Type'),
       'Content-Disposition': `attachment; filename="${filename}"`
     })
@@ -135,7 +135,7 @@ export const strategyStatic = (response) => {
   return newResponse(body, {
     status: 201,
     headers: new Headers({
-      Date: new Date().toString(),
+      Date: new Date().toUTCString(),
       'Content-Type': contentType,
       'Content-Disposition': `attachment;filename="${filename}"`
     })

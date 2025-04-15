@@ -28,7 +28,7 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/403`]: () =>
@@ -45,7 +45,7 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
 
@@ -59,7 +59,7 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/cache-control/no-cache`]: () =>
@@ -69,7 +69,7 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'no-cache',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/cache-control/max-age=0`]: () =>
@@ -79,7 +79,7 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=0',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/cache-control/null`]: () =>
@@ -88,7 +88,7 @@ const mockResponses = {
       statusText: 'OK',
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
 
@@ -99,8 +99,8 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
-        Date: new Date().toString(),
-        Expires: (Date.now() + 86400 * 1000).toString()
+        Date: new Date().toUTCString(),
+        Expires: new Date(Date.now() + 86400 * 1000).toUTCString()
       })
     }),
   [`${domain}/cache/expired`]: () =>
@@ -110,8 +110,8 @@ const mockResponses = {
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
-        Date: new Date(Date.now() - 86400 * 1000).toString(),
-        Expires: new Date(Date.now() - 86400 * 1000).toString()
+        Date: new Date(Date.now() - 86400 * 1000).toUTCString(),
+        Expires: new Date(Date.now() - 86400 * 1000).toUTCString()
       })
     }),
   [`${domain}/cache/notfound`]: () => undefined,
@@ -121,7 +121,7 @@ const mockResponses = {
       statusText: 'OK',
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/main`]: () =>
@@ -130,7 +130,7 @@ const mockResponses = {
       statusText: 'OK',
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     }),
   [`${domain}/footer`]: () =>
@@ -139,7 +139,7 @@ const mockResponses = {
       statusText: 'OK',
       headers: new Headers({
         'Content-Type': 'application/json; charset=UTF-8',
-        Date: new Date().toString()
+        Date: new Date().toUTCString()
       })
     })
 }
