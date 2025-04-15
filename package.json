@@ -1,6 +1,6 @@
 {
   "name": "work-bee-monorepo",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "",
   "type": "module",
   "scripts": {
@@ -51,19 +51,19 @@
   },
   "homepage": "https://workbee.js.org",
   "devDependencies": {
-    "@commitlint/cli": "^17.0.0",
-    "@commitlint/config-conventional": "^17.0.0",
-    "@playwright/test": "^1.27.0",
-    "c8": "^7.0.0",
-    "docsify-cli": "^4.4.4",
-    "esbuild": "^0.14.51",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@playwright/test": "^1.0.0",
+    "c8": "^10.0.0",
+    "docsify-cli": "^4.0.0",
+    "esbuild": "^0.25.0",
     "fake-indexeddb": "^4.0.0",
-    "http-server": "^14.1.1",
+    "http-server": "^14.0.0",
     "husky": "^8.0.0",
     "lerna": "^6.0.0",
     "lint-staged": "^13.0.0",
     "prettier": "^2.0.0",
-    "service-worker-mock": "^2.0.5",
+    "service-worker-mock": "^2.0.0",
     "sinon": "^14.0.0",
     "standard": "^17.0.0"
   }

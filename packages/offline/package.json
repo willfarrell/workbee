@@ -1,6 +1,6 @@
 {
   "name": "@work-bee/offline",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "offline workbee service worker middleware",
   "type": "module",
   "publishConfig": {
@@ -23,7 +23,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@work-bee/core": "0.0.4"
+    "@work-bee/core": "0.0.5"
   },
   "keywords": [
     "workbee",
