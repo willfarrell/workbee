@@ -111,7 +111,7 @@ const mockResponses = {
         'Content-Type': 'application/json; charset=UTF-8',
         'Cache-Control': 'max-age=86400',
         Date: new Date(Date.now() - 86400 * 1000).toUTCString(),
-        Expires: new Date(Date.now() - 86400 * 1000).toString()
+        Expires: new Date(Date.now() - 86400 * 1000).toUTCString()
       })
     }),
   [`${domain}/cache/notfound`]: () => undefined,
