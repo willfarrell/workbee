@@ -1,6 +1,3 @@
-// Copyright (c) willfarrell. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-
 /// <reference lib="webworker" />
 
 import fallback from "@work-bee/fallback";

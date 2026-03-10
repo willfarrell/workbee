@@ -11,7 +11,8 @@
 	"ignore": [
 		".github/**/*",
 		".husky/**/*",
-		"demo/*",
+		"demo/**/*",
+		"fixtures/*",
 		"CNAME",
 		"commitlint.config.cjs",
 		"docs/**/*",
