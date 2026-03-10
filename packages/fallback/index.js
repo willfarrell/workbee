@@ -1,39 +1,36 @@
-/* eslint-env: serviceworker */
 import {
-  fetchInlineStrategy,
-  strategyCacheFirst,
-  newRequest,
-  isResponse
-} from '@work-bee/core'
+	fetchInlineStrategy,
+	isResponse,
+	newRequest,
+	strategyCacheFirst,
+} from "@work-bee/core";
 
 const fallbackMiddleware = ({
-  pathPattern,
-  path,
-  statusCodes,
-  fallbackStrategy
+	pathPattern,
+	path,
+	statusCodes,
+	fallbackStrategy,
 } = {}) => {
-  const after = async (request, response, event, config) => {
-    if (response?.ok) {
-      return response
-    }
-    const typeResponse = isResponse(response)
-    if (typeResponse && !statusCodes?.includes(response.status)) {
-      return response
-    }
-    config.strategy = fallbackStrategy ?? strategyCacheFirst
-    let url = path
-    if (pathPattern) {
-      url = request.url.replace(pathPattern, path)
-    }
-    if (typeResponse) {
-      url = url.replace('{status}', response.status)
-    }
-    return fetchInlineStrategy(
-      newRequest({ ...request, url }, request.headers),
-      event,
-      config
-    )
-  }
-  return { after }
-}
-export default fallbackMiddleware
+	const after = async (request, response, event, config) => {
+		if (response?.ok) {
+			return response;
+		}
+		const typeResponse = isResponse(response);
+		if (typeResponse && !statusCodes?.includes(response.status)) {
+			return response;
+		}
+		let url = path;
+		if (pathPattern) {
+			url = request.url.replace(pathPattern, path);
+		}
+		if (typeResponse) {
+			url = url.replace("{status}", response.status);
+		}
+		return fetchInlineStrategy(newRequest(url, request), event, {
+			...config,
+			strategy: fallbackStrategy ?? strategyCacheFirst,
+		});
+	};
+	return { after };
+};
+export default fallbackMiddleware;

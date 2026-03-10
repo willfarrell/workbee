@@ -1,14 +1,22 @@
-/* eslint-env: serviceworker */
-import { strategyCacheOnly } from '@work-bee/core'
+import { strategyCacheOnly } from "@work-bee/core";
 
 const saveDataMiddleware = ({ saveDataStrategy } = {}) => {
-  const before = (request, event, config) => {
-    const saveData = request.headers.get('Save-Data') === 'on'
-    if (saveData) {
-      config.strategy = saveDataStrategy ?? strategyCacheOnly
-    }
-    return request
-  }
-  return { before }
-}
-export default saveDataMiddleware
+	let originalStrategy;
+	const before = (request, _event, config) => {
+		originalStrategy = config.strategy;
+		const saveData = request.headers.get("Save-Data") === "on";
+		if (saveData) {
+			config.strategy = saveDataStrategy ?? strategyCacheOnly;
+		}
+		return request;
+	};
+	const after = (_request, response, _event, config) => {
+		if (originalStrategy) {
+			config.strategy = originalStrategy;
+			originalStrategy = undefined;
+		}
+		return response;
+	};
+	return { before, after };
+};
+export default saveDataMiddleware;

@@ -1,4 +1,3 @@
-/* eslint-env: serviceworker */
 /* global caches */
 
 // When sessionTimer expires, send inactivity message to main thread
@@ -13,158 +12,172 @@
 // Phase III: finite session length
 
 import {
-  addHeaderToRequest,
-  addHeaderToResponse,
-  deleteHeaderFromResponse,
-  isResponse,
-  postMethod,
-  postMessageToFocused
-} from '@work-bee/core'
+	addHeaderToRequest,
+	authorizationHeader,
+	deleteHeaderFromResponse,
+	isResponse,
+	postMessageToFocused,
+	postMethod,
+} from "@work-bee/core";
 
-const headerAuthorization = 'Authorization'
 const sessionMiddleware = ({
-  // Create Session
-  authnMethods,
-  authnPathPattern,
-  authnGetToken,
-  // Session Management
-  authnGetExpiry,
-  expiryPromptEventType,
-  renewPath,
-  authzPathPattern,
-  postMessage,
-  //  Destroy Session
-  clearPathPattern,
-  clearSiteData,
-  expiryEventType
+	// Create Session
+	authnMethods,
+	authnPathPattern,
+	// Session Management
+	authnGetToken,
+	authnGetExpiry,
+	authzPathPattern,
+	authzSetToken,
+	// Session inactivity
+	inactivityPromptEventType,
+	postMessage,
+	//  Destroy Session
+	unauthnPathPattern,
+	expiryEventType,
 }) => {
-  authnMethods ??= [postMethod]
-  authnGetToken ??= (response) => {
-    // const body = await response.json()
-    return response.headers.get(headerAuthorization)
-  }
-  authnGetExpiry ??= (response, token) => {
-    // jwt JSON.parse(atob(token.split('.')[1])).expires_at
-    // paseto JSON.parse(atob(token.split('.')[2])).exp
-    return 15 * 60
-  }
-  postMessage ??= postMessageToFocused
+	authnMethods ??= [postMethod];
+	authnGetToken ??= getTokenAuthorization;
+	authnGetExpiry ??= () => 12 * 60 * 60 * 1000;
+	authzSetToken ??= setTokenAuthorization;
 
-  let sessionToken = ''
-  let sessionCaches = {}
+	postMessage ??= postMessageToFocused;
 
-  let before, afterNetwork, after
+	const inactivityTimeoutBuffer = 60 * 1000;
 
-  if (authzPathPattern) {
-    before = (request, event, config) => {
-      if (authzPathPattern.test(request.url)) {
-        request = addHeaderToRequest(request, headerAuthorization, sessionToken)
-      }
-      return request
-    }
-    after = (request, response, event, config) => {
-      activityEvent()
-      if (authzPathPattern.test(request.url)) {
-        sessionCaches[config.cacheKey] ??= true
-      }
-      return response
-    }
-  }
+	let sessionToken = "";
+	let sessionCaches = {};
 
-  if (authnPathPattern || clearPathPattern) {
-    afterNetwork = async (request, response, event, config) => {
-      if (isResponse(response)) {
-        if (
-          authnMethods.includes(request.method) &&
-          authnPathPattern.test(request.url)
-        ) {
-          sessionToken = await authnGetToken(response.clone())
-          sessionExpiresInMiliseconds = await authnGetExpiry(
-            response.clone(),
-            sessionToken
-          )
-          activityTimer()
-          sessionTimer()
-          // Remove Authorization from response
-          response = deleteHeaderFromResponse(response, headerAuthorization)
-        } else if (clearPathPattern.test(request.url)) {
-          if (clearSiteData !== false) {
-            response = addHeaderToResponse(
-              response,
-              'Clear-Site-Data',
-              clearSiteData ?? '"*"'
-            )
-          }
-          clearSession()
-        }
-      }
-      return response
-    }
-  }
+	let before, afterNetwork, after;
 
-  let sessionExpiresInMiliseconds
-  let recentActivityTimestamp = 0
+	if (authzPathPattern) {
+		before = (request, _event, _config) => {
+			if (authzPathPattern.test(request.url)) {
+				request = authzSetToken(request, sessionToken);
+			}
+			return request;
+		};
+		after = (request, response, _event, config) => {
+			activityEvent();
+			if (authzPathPattern.test(request.url)) {
+				sessionCaches[config.cacheKey] ??= true;
+			}
+			return response;
+		};
+	}
 
-  let activityTimeout
-  const activityTimer = () => {
-    // 60 sec for time before expire to notify
-    activityTimeout = setTimeout(
-      expiryPromptEvent,
-      recentActivityTimestamp +
-        sessionExpiresInMiliseconds -
-        60 * 1000 -
-        Date.now()
-    )
-  }
-  let sessionTimeout
-  const sessionTimer = () => {
-    // 5 sec for time to renew session
-    sessionTimeout = setTimeout(async () => {
-      if (
-        recentActivityTimestamp <
-        Date.now() - sessionExpiresInMiliseconds - 5 * 1000
-      ) {
-        await fetch(renewPath)
-      } else {
-        clearSession()
-        if (expiryEventType) {
-          postMessage({ type: expiryEventType })
-        }
-      }
-    }, sessionExpiresInMiliseconds - 5 * 1000)
-  }
+	if (authnPathPattern || unauthnPathPattern) {
+		afterNetwork = async (request, response, _event, _config) => {
+			if (isResponse(response)) {
+				if (
+					authnMethods.includes(request.method) &&
+					authnPathPattern.test(request.url)
+				) {
+					sessionToken = await authnGetToken(response.clone());
+					sessionExpiresInMiliseconds = await authnGetExpiry(
+						response.clone(),
+						sessionToken,
+					);
+					inactivityTimer();
+					sessionTimer();
+					// Remove Authorization from response
+					response = deleteHeaderFromResponse(response, authorizationHeader);
+				} else if (unauthnPathPattern.test(request.url)) {
+					clearSession();
+				}
+			}
+			return response;
+		};
+	}
 
-  const clearSession = () => {
-    sessionToken = ''
-    for (const cacheFullName of Object.keys(sessionCaches)) {
-      caches.delete(cacheFullName)
-    }
-    sessionCaches = {}
-    clearTimeout(activityTimeout)
-    clearTimeout(sessionTimeout)
-  }
+	let sessionExpiresInMiliseconds;
+	let recentActivityTimestamp = 0;
 
-  // Page -> sw
-  const activityEvent = () => {
-    recentActivityTimestamp = Date.now()
-  }
-  activityEvent()
+	let inactivityTimeout;
+	const inactivityTimer = () => {
+		// 60 sec for time before expire to notify
+		inactivityTimeout = setTimeout(
+			expiryPromptEvent,
+			recentActivityTimestamp +
+				sessionExpiresInMiliseconds -
+				inactivityTimeoutBuffer -
+				now(),
+		);
+	};
+	let sessionTimeout;
+	const sessionTimer = () => {
+		sessionTimeout = setTimeout(async () => {
+			clearSession();
+			if (expiryEventType) {
+				postMessage({ type: expiryEventType });
+			}
+		}, sessionExpiresInMiliseconds);
+	};
 
-  // sw -> Page
-  const expiryPromptEvent = () => {
-    if (
-      recentActivityTimestamp <
-      Date.now() - sessionExpiresInMiliseconds + 60 * 1000
-    ) {
-      if (expiryPromptEventType) {
-        postMessage({ type: expiryPromptEventType })
-      }
-    } else {
-      activityTimer()
-    }
-  }
+	const clearSession = () => {
+		sessionToken = "";
+		for (const cacheFullName of Object.keys(sessionCaches)) {
+			caches.delete(cacheFullName);
+		}
+		sessionCaches = {};
+		clearTimeout(inactivityTimeout);
+		clearTimeout(sessionTimeout);
+	};
 
-  return { before, afterNetwork, after, activityEvent }
-}
+	// sw -> Page
+	const expiryPromptEvent = () => {
+		if (
+			recentActivityTimestamp <
+			now() - sessionExpiresInMiliseconds + inactivityTimeoutBuffer
+		) {
+			if (inactivityPromptEventType) {
+				postMessage({ type: inactivityPromptEventType });
+			}
+		} else {
+			inactivityTimer();
+		}
+	};
 
-export default sessionMiddleware
+	// Page -> sw
+	const activityEvent = () => {
+		recentActivityTimestamp = now();
+	};
+	activityEvent();
+
+	return { before, afterNetwork, after, activityEvent };
+};
+
+const now = () => Date.now();
+
+export const getTokenAuthorization = (response) => {
+	// Authorization Bearer <token>
+	return response.headers.get(authorizationHeader)?.split(" ")[1];
+};
+
+export const getExpiryJWT = (_response, token) => {
+	try {
+		return (
+			new Date(JSON.parse(atob(token.split(".")[1])).expires_at).getTime() -
+			now()
+		);
+	} catch {
+		return 0;
+	}
+};
+
+export const getExpiryPaseto = (_response, token) => {
+	try {
+		return (
+			new Date(JSON.parse(atob(token.split(".")[2])).exp).getTime() - now()
+		);
+	} catch {
+		return 0;
+	}
+};
+
+export const setTokenAuthorization = (request, token) => {
+	// Authorization Bearer <token>
+	return addHeaderToRequest(request, authorizationHeader, `Bearer ${token}`);
+};
+
+export default sessionMiddleware;

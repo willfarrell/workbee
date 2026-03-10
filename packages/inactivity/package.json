@@ -1,0 +1,55 @@
+{
+	"name": "@work-bee/inactivity",
+	"version": "0.0.5",
+	"description": "inactivity workbee service worker middleware",
+	"type": "module",
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "./index.js",
+	"module": "./index.js",
+	"exports": {
+		".": {
+			"types": "./index.d.ts",
+			"default": "./index.js"
+		},
+		"./client": {
+			"default": "./client.js"
+		}
+	},
+	"types": "index.d.ts",
+	"files": [
+		"index.js",
+		"index.d.ts",
+		"client.js"
+	],
+	"scripts": {
+		"test": "node --test"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/workbee.git",
+		"directory": "packages/inactivity"
+	},
+	"homepage": "https://workbee.js.org/docs/packages/inactivity",
+	"dependencies": {
+		"@work-bee/core": "0.0.5"
+	},
+	"keywords": [
+		"workbee",
+		"service",
+		"worker",
+		"sw",
+		"inactivity",
+		"network"
+	],
+	"engines": {
+		"node": ">=24"
+	},
+	"author": "willfarrell",
+	"license": "MIT",
+	"funding": {
+		"type": "github",
+		"url": "https://github.com/sponsors/willfarrell"
+	}
+}

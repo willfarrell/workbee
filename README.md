@@ -1,6 +1,22 @@
-# The WorkBee ServiceWorker 🐝
-
-A tiny ServiceWorker for secure web applications.
+<div align="center">
+  <img alt="workbee logo" src="https://raw.githubusercontent.com/willfarrell/workbee/main/docs/img/workbee-logo.svg"/>
+  <p><strong>A tiny ServiceWorker for secure web applications.</strong></p>
+<p>
+  <a href="https://github.com/willfarrell/workbee/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
+  <a href="https://github.com/willfarrell/workbee/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
+  <a href="https://github.com/willfarrell/workbee/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
+  <br/>
+  <a href="https://www.npmjs.com/package/@work-bee/core"><img alt="npm version" src="https://img.shields.io/npm/v/@work-bee/core.svg"></a>
+  <a href="https://packagephobia.com/result?p=@work-bee/core"><img src="https://packagephobia.com/badge?p=@work-bee/core" alt="npm install size"></a>
+  <a href="https://www.npmjs.com/package/@work-bee/core"><img alt="npm weekly downloads" src="https://img.shields.io/npm/dw/@work-bee/core.svg"></a>
+  <br/>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/willfarrell/workbee"><img src="https://api.scorecard.dev/projects/github.com/willfarrell/workbee/badge" alt="Open Source Security Foundation (OpenSSF) Scorecard"></a>
+  <a href="https://github.com/willfarrell/workbee/blob/main/CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
+  <a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
+  <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
+</p>
+<p>You can read the documentation at: <a href="https://workbee.js.org">https://workbee.js.org</a></p>
+</div>
 
 ## Features
 
@@ -9,17 +25,6 @@ A tiny ServiceWorker for secure web applications.
 - Tree-shaking supported
 - Zero (0) dependencies
 - GDPR Compliant
-
-## TODO
-
-- improve test coverage
-- more e2e tests
-- documentation
-- session management
-- Push events
-- Range Requests strategy
-- precache extract zip
-- workbox comparison (~1KB vs ~70KB)
 
 ## Getting Started
 
@@ -32,10 +37,10 @@ npm install @work-bee/core
 ### Basic Setup
 
 ```js
-import { compileConfig, installEvent, activateEvent, fetchEvent, strategyCacheFirst } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
 
 const config = compileConfig({
-  cachePrefix, '1-',
+  cachePrefix: '1-',
   //precache: ['/path/to/file.ext'],
   routes: [
     {
@@ -49,15 +54,15 @@ const config = compileConfig({
 })
 
 addEventListener('install', (event) => {
-  installEvent(event, config)
+  eventInstall(event, config)
 })
 
 addEventListener('activate', (event) => {
-  activateEvent(event, config)
+  eventActivate(event, config)
 })
 
 addEventListener('fetch', (event) => {
-  fetchEvent(event, config)
+  eventFetch(event, config)
 })
 
 ```
@@ -66,9 +71,15 @@ addEventListener('fetch', (event) => {
 
 ### Install
 
+Handles pre-caching of resources.
+
 ### Activate
 
+Cleans up old caches.
+
 ### Fetch
+
+Routes requests through configured strategies and middleware.
 
 ### Push (future)
 
@@ -222,12 +233,10 @@ sequenceDiagram
 ### Request Partitioning
 
 ```javascript
-import { compileConfig } @work-bee/core
-import { installEvent, activateEvent, fetchEvent } from '@work-bee/events'
-import { strategyCacheFirst, strategyPartition } from '@work-bee/strategies'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst, strategyPartition } from '@work-bee/core'
 
 const config = compileConfig({
-  cachePrefix, 'sw-VERSION-',
+  cachePrefix: 'sw-VERSION-',
   routes: [
     {
       methods: ['GET'],
@@ -237,7 +246,7 @@ const config = compileConfig({
         strategy: strategyCacheFirst,
         cacheName: 'strategyPartition',
         makeRequests: () => []
-      }),
+      })),
       cacheMaxAgeInSeconds: -1
     },
     ...
@@ -245,15 +254,15 @@ const config = compileConfig({
 })
 
 addEventListener('install', (event) => {
-  installEvent(event, config)
+  eventInstall(event, config)
 })
 
 addEventListener('activate', async (event) => {
-  await activateEvent(event, config)
+  await eventActivate(event, config)
 })
 
 addEventListener('fetch', (event) => {
-  fetchEvent(event, config)
+  eventFetch(event, config)
 })
 
 ```
@@ -283,11 +292,9 @@ sequenceDiagram
 
 Choose strategy based on if Save-Data is enabled.
 
-### Session Management (future)
+### Session Management
 
-```js
-
-```
+See [@work-bee/session](/packages/session) for authentication token management, session expiry, and inactivity detection.
 
 ### Offline Request Enqueue
 
@@ -369,7 +376,7 @@ addEventListener('fetch', (event) => {
 
 #### [Cache, update and refresh](https://serviceworke.rs/strategy-cache-update-and-refresh.html)
 
-TODO refresh middleware, add to strategyStaleWhileRevalidate?
+Not yet implemented.
 
 #### [Embedded fallback](https://serviceworke.rs/strategy-embedded-fallback.html)
 
@@ -404,10 +411,6 @@ addEventListener('fetch', (event) => {
   eventFetch(event, config)
 })
 ```
-
-### Web Push
-
-### General Usage
 
 ### Offline
 
@@ -489,7 +492,6 @@ import { strategyCacheFirst, strategyCacheOnly } from '@work-bee/core'
 const config = {
   precache: {
     routes: '/path/to/precache.json',
-    extract: // TODO
   },
   strategy: strategyCacheFirst
 }
@@ -511,56 +513,32 @@ addEventListener('fetch', (event) => {
 
 #### [Local Download](https://serviceworke.rs/local-download.html)
 
-```javascript
-/* eslint-env: serviceworker */
-/*import { strategyLocalDownload } from '@work-bee/core'
-
-const config = {
-  routes: [
-    {
-      pathPattern: new Regexp('/path/to/download/.*$'),
-      strategy: strategyLocalDownload
-    }
-  ]
-}
-
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
-
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
-
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})*/
-```
+Not yet implemented.
 
 #### [Virtual Server](https://serviceworke.rs/virtual-server.html)
 
 #### [API Analytics](https://serviceworke.rs/api-analytics.html)
 
-TODO 3rd party middleware - ie plausible
+Not yet implemented.
 
 #### [Load balancer](https://serviceworke.rs/load-balancer.html)
 
-TODO new middleware.before - group external domains to allow request path replace & ping all to pick best
+Not yet implemented.
 
 #### [Cache from ZIP](https://serviceworke.rs/cache-from-zip.html)
 
-TODO new plugin - return empty response, iterate over contents and cachePut
+Not yet implemented.
 
 #### [Dependency Injection](https://serviceworke.rs/dependency-injector.html)
 
-TODO need to understand more
+Not yet implemented.
 
 #### [Request Deferrer](https://serviceworke.rs/request-deferrer.html)
 
 ```javascript
 /* eslint-env: serviceworker */
 import { strategyCacheFirst } from '@work-bee/core'
-import { offlineMiddleware } from '@work-bee/offline'
+import offlineMiddleware from '@work-bee/offline'
 
 const offline = offlineMiddleware({ pollDelay: 0 })
 const config = {
@@ -585,7 +563,7 @@ addEventListener('message', (event) => {
   event.waitUntil(messageEvents[data.type](data))
 })
 const messageEvents = {
-  online: offline.onlineEvent
+  online: offline.postMessageEvent
 }
 ```
 
@@ -655,3 +633,7 @@ const messageEvents = {
   cache: cacheOverrideEvent(config)
 }
 ```
+
+## License
+
+Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).
