@@ -9,7 +9,7 @@
 		"ignoreUnknown": true,
 		"includes": [
 			"**",
-			"!test/static/strategy/strategyHTMLPartition.header.html"
+			"!demo/static/strategy/strategyHTMLPartition.header.html"
 		]
 	},
 	"formatter": {

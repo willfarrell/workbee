@@ -27,7 +27,7 @@ prod: 748+ 2943+ 1457+ 778+ 356+ 2510+ 917+ 1473+ 2280+ 321+ 2559+ 802+ 698+ 106
 */
 // end
 
-import cacheControlMiddleware from "../packages/cache-control/index.js";
+import cacheControlMiddleware from "../../packages/cache-control/index.js";
 import {
 	backgroundFetchFailEvent,
 	backgroundFetchSuccessEvent,
@@ -48,12 +48,12 @@ import {
 	strategyPartition,
 	strategyStaleWhileRevalidate,
 	strategyStatic,
-} from "../packages/core/index.js";
-import fallbackMiddleware from "../packages/fallback/index.js";
-import inactivityMiddleware from "../packages/inactivity/index.js";
-import loggerMiddleware from "../packages/logger/index.js";
-import offlineMiddleware from "../packages/offline/index.js";
-import saveDataMiddleware from "../packages/save-data/index.js";
+} from "../../packages/core/index.js";
+import fallbackMiddleware from "../../packages/fallback/index.js";
+import inactivityMiddleware from "../../packages/inactivity/index.js";
+import loggerMiddleware from "../../packages/logger/index.js";
+import offlineMiddleware from "../../packages/offline/index.js";
+import saveDataMiddleware from "../../packages/save-data/index.js";
 
 // Shared middleware
 const _inactivity = inactivityMiddleware({});
