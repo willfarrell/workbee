@@ -1,6 +1,9 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 import { postMessageToAll, postMessageToFocused } from "./postMessage.js";
 import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
 
+// nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 export const pathPattern = (pathPattern) => new RegExp(pathPattern);
 export const defaultConfig = {
 	// global

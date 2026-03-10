@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 /*
 https://serviceworke.rs/
 */

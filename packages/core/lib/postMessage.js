@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 /* global clients */
 export const postMessageToAll = async (message) => {
 	return clients

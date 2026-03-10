@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 import { strategyCacheOnly } from "@work-bee/core";
 
 const saveDataMiddleware = ({ saveDataStrategy } = {}) => {

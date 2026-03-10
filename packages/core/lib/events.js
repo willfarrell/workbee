@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
 import { cachesDelete } from "./cache.js";
 import { consoleError } from "./console.js";

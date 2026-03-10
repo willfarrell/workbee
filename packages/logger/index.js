@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 import { consoleLog, headersGetAll } from "@work-bee/core";
 
 const defaultRedactHeaders = [

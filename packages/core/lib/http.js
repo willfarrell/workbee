@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 /* global Headers Request Response */
 export const headersGetAll = (headersObj) => {
 	const headers = {};

@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 // --- Interfaces ---
 
 /** Strategy function signature for handling fetch requests. */

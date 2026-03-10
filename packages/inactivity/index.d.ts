@@ -1,3 +1,5 @@
+// Copyright 2026 will Farrell, and workbee contributors.
+// SPDX-License-Identifier: MIT
 import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 
 interface InactivityOptions {
