@@ -1,6 +1,6 @@
 const defaultActivityEvents = [
 	"load",
-	//'click', // duplicate of mousedown
+
 	"keypress",
 	"mousedown",
 	"mousemove",

@@ -2,7 +2,7 @@
 
 import { deepEqual, equal, strictEqual } from "node:assert";
 import test from "node:test";
-import "../../../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import {
 	addHeaderToRequest,
 	addHeaderToResponse,
@@ -43,6 +43,15 @@ test("http", async (t) => {
 			const result = headersGetAll(headers);
 			equal(result["content-type"], "application/json");
 			equal(result["x-custom"], "value");
+		},
+	);
+
+	await t.test(
+		"headersGetAll: should handle entries returning nullish",
+		async () => {
+			const obj = { entries: () => null };
+			const result = headersGetAll(obj);
+			deepEqual(result, {});
 		},
 	);
 

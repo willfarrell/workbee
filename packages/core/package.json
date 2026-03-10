@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/core",
-	"version": "0.0.4",
+	"version": "0.0.5",
 	"description": "workbee service worker strategies",
 	"type": "module",
 	"publishConfig": {
@@ -23,6 +23,12 @@
 	"scripts": {
 		"test": "node --test"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/workbee.git",
+		"directory": "packages/core"
+	},
+	"homepage": "https://workbee.js.org/docs/packages/core",
 	"keywords": [
 		"workbee",
 		"service",
@@ -32,11 +38,13 @@
 		"cache",
 		"network"
 	],
+	"engines": {
+		"node": ">=24"
+	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
-	},
-	"gitHead": "897cf8176c4df45d4ac0150283a37a5a52dd9199"
+	}
 }

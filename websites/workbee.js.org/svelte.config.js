@@ -5,7 +5,7 @@ import { rehypeAddHeadingIds } from "./src/lib/rehype-add-heading-ids.js";
 import { remarkExtractHeadings } from "./src/lib/remark-extract-headings.js";
 import tardisec from "./tardisec.json" with { type: "json" };
 
-const domain = process.env.ORIGIN ?? "datastream.js.org";
+const domain = process.env.ORIGIN ?? "workbee.js.org";
 const origin = domain;
 const config = {
 	kit: {

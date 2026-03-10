@@ -70,6 +70,7 @@ const sessionMiddleware = ({
 		afterNetwork = async (request, response, _event, _config) => {
 			if (isResponse(response)) {
 				if (
+					authnPathPattern &&
 					authnMethods.includes(request.method) &&
 					authnPathPattern.test(request.url)
 				) {
@@ -82,7 +83,7 @@ const sessionMiddleware = ({
 					sessionTimer();
 					// Remove Authorization from response
 					response = deleteHeaderFromResponse(response, authorizationHeader);
-				} else if (unauthnPathPattern.test(request.url)) {
+				} else if (unauthnPathPattern?.test(request.url)) {
 					clearSession();
 				}
 			}
@@ -90,22 +91,27 @@ const sessionMiddleware = ({
 		};
 	}
 
-	let sessionExpiresInMiliseconds;
+	let sessionExpiresInMiliseconds = 0;
 	let recentActivityTimestamp = 0;
 
 	let inactivityTimeout;
 	const inactivityTimer = () => {
+		clearTimeout(inactivityTimeout);
 		// 60 sec for time before expire to notify
 		inactivityTimeout = setTimeout(
 			expiryPromptEvent,
-			recentActivityTimestamp +
-				sessionExpiresInMiliseconds -
-				inactivityTimeoutBuffer -
-				now(),
+			Math.max(
+				0,
+				recentActivityTimestamp +
+					sessionExpiresInMiliseconds -
+					inactivityTimeoutBuffer -
+					now(),
+			),
 		);
 	};
 	let sessionTimeout;
 	const sessionTimer = () => {
+		clearTimeout(sessionTimeout);
 		sessionTimeout = setTimeout(async () => {
 			clearSession();
 			if (expiryEventType) {
@@ -144,7 +150,11 @@ const sessionMiddleware = ({
 	};
 	activityEvent();
 
-	return { before, afterNetwork, after, activityEvent };
+	const destroy = () => {
+		clearSession();
+	};
+
+	return { before, afterNetwork, after, activityEvent, destroy };
 };
 
 const now = () => Date.now();

@@ -24,6 +24,7 @@ interface OfflineOptions {
 	quotaExceededEventType?: string;
 	dequeueEventType?: string;
 	objectStoreName?: string;
+	redactHeaders?: string[];
 }
 
 interface OfflineMiddlewareResult {

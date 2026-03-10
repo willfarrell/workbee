@@ -1,6 +1,6 @@
 /* global Request Response Headers */
 import { test } from "node:test";
-import "../../test-unit/helper.js";
+import "../../fixtures/helper.js";
 import { strategyNetworkFirst } from "@work-bee/core";
 import saveDataMiddleware from "./index.js";
 

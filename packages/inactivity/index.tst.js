@@ -3,7 +3,8 @@
 
 /// <reference lib="webworker" />
 
-import inactivity, { inactivityClient } from "@work-bee/inactivity";
+import inactivity from "@work-bee/inactivity";
+import inactivityClient from "@work-bee/inactivity/client";
 import { describe, expect, test } from "tstyche";
 
 /** @typedef {import("@work-bee/core").BeforeMiddleware} BeforeMiddleware */

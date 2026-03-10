@@ -1,4 +1,3 @@
-/* eslint-env: serviceworker */
 /* global Headers Request Response */
 export const headersGetAll = (headersObj) => {
 	const headers = {};
@@ -15,7 +14,7 @@ export const urlRemoveHash = (url) => {
 	return urlObj.toString();
 };
 
-export const isRequest = (response) => response instanceof Request;
+export const isRequest = (value) => value instanceof Request;
 export const newRequest = (url, options) => new Request(url, options);
 
 export const addHeaderToRequest = (request, key, value) => {
@@ -39,7 +38,7 @@ export const addHeaderToResponse = (response, key, value) => {
 	return newResponse(response, headers);
 };
 
-export const deleteHeaderFromResponse = (response, key, value) => {
+export const deleteHeaderFromResponse = (response, key) => {
 	const headers = new Headers(headersGetAll(response.headers));
 	headers.delete(key);
 	return newResponse(response, headers);

@@ -7,7 +7,7 @@ import {
 	domain,
 	fetchOverride,
 	spy,
-} from "../../test-unit/helper.js";
+} from "../../fixtures/helper.js";
 import sessionMiddleware, {
 	getExpiryJWT,
 	getExpiryPaseto,
@@ -32,6 +32,14 @@ test("getTokenAuthorization: Should extract Bearer token from Authorization head
 	strictEqual(token, "test-token-abc");
 });
 
+test("getTokenAuthorization: Should return undefined when no Authorization header", async (_t) => {
+	const response = new Response("", {
+		headers: new Headers({}),
+	});
+	const token = getTokenAuthorization(response);
+	strictEqual(token, undefined);
+});
+
 // --- setTokenAuthorization ---
 test("setTokenAuthorization: Should add Bearer token to request Authorization header", async (_t) => {
 	const request = new Request(`${domain}/api/data`);
@@ -53,6 +61,19 @@ test("getExpiryJWT: Should extract expiry from JWT payload", async (_t) => {
 	strictEqual(result <= 3600 * 1000, true);
 });
 
+// --- getExpiryJWT error path ---
+test("getExpiryJWT: Should return 0 for invalid token", async (_t) => {
+	const response = new Response("");
+	const result = getExpiryJWT(response, "invalid-token");
+	strictEqual(result, 0);
+});
+
+test("getExpiryJWT: Should return 0 for malformed JSON in payload", async (_t) => {
+	const response = new Response("");
+	const result = getExpiryJWT(response, "header.notbase64.signature");
+	strictEqual(result, 0);
+});
+
 // --- getExpiryPaseto ---
 test("getExpiryPaseto: Should extract expiry from PASETO footer", async (_t) => {
 	const exp = new Date(Date.now() + 7200 * 1000).toISOString();
@@ -65,6 +86,19 @@ test("getExpiryPaseto: Should extract expiry from PASETO footer", async (_t) => 
 	// Should be approximately 7200 * 1000 ms (within 1 second tolerance)
 	strictEqual(result > 7199 * 1000, true);
 	strictEqual(result <= 7200 * 1000, true);
+});
+
+// --- getExpiryPaseto error path ---
+test("getExpiryPaseto: Should return 0 for invalid token", async (_t) => {
+	const response = new Response("");
+	const result = getExpiryPaseto(response, "invalid-token");
+	strictEqual(result, 0);
+});
+
+test("getExpiryPaseto: Should return 0 for malformed JSON in footer", async (_t) => {
+	const response = new Response("");
+	const result = getExpiryPaseto(response, "v4.public.notbase64");
+	strictEqual(result, 0);
 });
 
 // --- sessionMiddleware with authzPathPattern ---
@@ -95,6 +129,7 @@ test("sessionMiddleware: before should add Authorization header to matching requ
 	const apiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token-123");
+	session.destroy();
 });
 
 test("sessionMiddleware: before should skip non-matching requests", async (_t) => {
@@ -124,6 +159,7 @@ test("sessionMiddleware: before should skip non-matching requests", async (_t) =
 	const otherRequest = new Request(`${domain}/public/page`);
 	const result = session.before(otherRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
+	session.destroy();
 });
 
 test("sessionMiddleware: before should set empty Bearer token when sessionToken is empty", async (_t) => {
@@ -136,6 +172,34 @@ test("sessionMiddleware: before should set empty Bearer token when sessionToken 
 	const apiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer");
+});
+
+// --- sessionMiddleware with default authnGetExpiry ---
+test("sessionMiddleware: should use default authnGetExpiry when not provided", async (_t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		postMessage: mock.fn(),
+	});
+
+	const loginRequest = new Request(`${domain}/auth/login`, { method: "POST" });
+	const loginResponse = new Response("{}", {
+		status: 200,
+		headers: new Headers({ Authorization: "Bearer test-token" }),
+	});
+	await session.afterNetwork(
+		loginRequest,
+		loginResponse,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	const apiRequest = new Request(`${domain}/api/data`);
+	const result = session.before(apiRequest, {}, {});
+	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+	session.destroy();
 });
 
 // --- sessionMiddleware without authzPathPattern ---
@@ -175,6 +239,7 @@ test("sessionMiddleware: afterNetwork should extract token and strip Authorizati
 	);
 	strictEqual(authnGetToken.mock.callCount(), 1);
 	strictEqual(result.headers.get("Authorization"), null);
+	session.destroy();
 });
 
 // --- sessionMiddleware without authnPathPattern/unauthnPathPattern ---

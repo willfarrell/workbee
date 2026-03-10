@@ -1,9 +1,7 @@
 <script>
-import { page } from "$app/state";
+import LayoutAsideNav from "@design-system/components/LayoutAsideNav.svelte";
 
-const { params, data, form } = page;
-
-const _nav = {
+const nav = {
 	"Getting Started": {
 		Introduction: "/docs",
 		"Quick Start": "/docs/quick-start",

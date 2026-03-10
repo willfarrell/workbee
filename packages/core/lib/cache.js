@@ -9,10 +9,10 @@ export const openCaches = {};
 export const cacheOverrideEvent = (config) => {
 	return (messageEvent) => {
 		let { request, response } = messageEvent;
-		const routeConfig = findRouteConfig(config, messageEvent.request);
 		if (typeof request === "string") {
 			request = newRequest(request);
 		}
+		const routeConfig = findRouteConfig(config, request);
 		if (typeof response === "string") {
 			response = newResponse({ url: request.url, body: response });
 		}

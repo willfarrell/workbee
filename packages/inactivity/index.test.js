@@ -2,7 +2,7 @@
 
 import { strictEqual } from "node:assert";
 import { mock, test } from "node:test";
-import { cachesOverride, fetchOverride } from "../../test-unit/helper.js";
+import { cachesOverride, fetchOverride } from "../../fixtures/helper.js";
 import inactivityMiddleware from "./index.js";
 
 // Mocks
@@ -94,6 +94,15 @@ test("inactivityMiddleware: Should trigger inactivityEvent after requests happen
 
 	mock.timers.tick(15 * 60 * 1000 + 1);
 	strictEqual(inactivityEvent.mock.callCount(), 1);
+});
+
+test("inactivityMiddleware: Should trigger default inactivityEvent when none provided", async (t) => {
+	t.mock.method(console, "error", () => {});
+	const _inactivity = inactivityMiddleware({
+		inactivityAllowedInMin: 15,
+	});
+	mock.timers.tick(15 * 60 * 1000 + 1);
+	strictEqual(console.error.mock.callCount(), 1);
 });
 
 test("inactivityMiddleware: Should trigger inactivityEvent after postMessageEvent happens", async (_t) => {

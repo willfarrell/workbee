@@ -1,6 +1,6 @@
 /* global Request Response */
 import { test } from "node:test";
-import "../../test-unit/helper.js";
+import "../../fixtures/helper.js";
 import { strategyNetworkOnly } from "@work-bee/core";
 import loggerMiddleware from "./index.js";
 

@@ -142,6 +142,6 @@ const pick = (originalObject = {}, keysToPick = []) => {
 };
 
 const flattenMiddleware = (type, routeConfig) =>
-	routeConfig.middlewares
+	(routeConfig.middlewares ?? [])
 		.map((middleware) => middleware[type])
 		.filter((middleware) => middleware);

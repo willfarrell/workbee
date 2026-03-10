@@ -1,6 +1,6 @@
 {
-	"name": "@work-bee/loggger",
-	"version": "0.0.4",
+	"name": "@work-bee/logger",
+	"version": "0.0.5",
 	"description": "logger workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -22,23 +22,31 @@
 	"scripts": {
 		"test": "node --test"
 	},
-	"devDependencies": {
-		"@work-bee/core": "0.0.4"
+	"dependencies": {
+		"@work-bee/core": "0.0.5"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/workbee.git",
+		"directory": "packages/logger"
+	},
+	"homepage": "https://workbee.js.org/docs/packages/logger",
 	"keywords": [
 		"workbee",
 		"service",
 		"worker",
 		"sw",
-		"strategies",
-		"cache",
+		"logger",
+		"logging",
 		"network"
 	],
+	"engines": {
+		"node": ">=24"
+	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
-	},
-	"gitHead": "897cf8176c4df45d4ac0150283a37a5a52dd9199"
+	}
 }

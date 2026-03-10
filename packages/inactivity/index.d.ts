@@ -16,6 +16,3 @@ declare function inactivityMiddleware(
 ): InactivityMiddlewareResult;
 
 export default inactivityMiddleware;
-
-declare function inactivityClient(events?: string[]): void;
-export { inactivityClient };

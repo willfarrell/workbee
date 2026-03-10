@@ -2,7 +2,7 @@
 
 import { deepEqual, equal } from "node:assert";
 import { mock, test } from "node:test";
-import "../../../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import {
 	backgroundFetchFailEvent,
 	backgroundFetchSuccessEvent,
@@ -271,7 +271,13 @@ test("events", async (t) => {
 
 			const config = compileConfig({
 				middlewares: [],
-				routes: [],
+				routes: [
+					{
+						methods: ["GET"],
+						pathPattern: pathPattern("/api/.*$"),
+						cacheName: "api",
+					},
+				],
 				activate: { eventType: false },
 			});
 
@@ -400,6 +406,30 @@ test("events", async (t) => {
 			deepEqual(postMessageFn.mock.calls[0].arguments[0], { stored: true });
 
 			globalThis.BroadcastChannel = originalBroadcastChannel;
+		},
+	);
+
+	// *** precacheExtractJSON *** //
+	await t.test(
+		"precacheExtractJSON: should return JSON for application/json response",
+		async () => {
+			const data = [{ path: "/index.html" }];
+			const response = new Response(JSON.stringify(data), {
+				headers: new Headers({ "Content-Type": "application/json" }),
+			});
+			const result = await precacheExtractJSON(response);
+			deepEqual(result, data);
+		},
+	);
+
+	await t.test(
+		"precacheExtractJSON: should return empty array for non-JSON response",
+		async () => {
+			const response = new Response("<html></html>", {
+				headers: new Headers({ "Content-Type": "text/html" }),
+			});
+			const result = precacheExtractJSON(response);
+			deepEqual(result, []);
 		},
 	);
 

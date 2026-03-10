@@ -21,8 +21,3 @@ export const postMessageToFocused = async (message) => {
 			}
 		});
 };
-
-/* const bc = new BroadcastChannel('sw')
-export const postMessageChannel = async (message) => {
-  bc.postMessage(message)
-} */

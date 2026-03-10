@@ -14,6 +14,7 @@
 			"default": "./index.js"
 		},
 		"./client": {
+			"types": "./client.d.ts",
 			"default": "./client.js"
 		}
 	},
@@ -21,7 +22,8 @@
 	"files": [
 		"index.js",
 		"index.d.ts",
-		"client.js"
+		"client.js",
+		"client.d.ts"
 	],
 	"scripts": {
 		"test": "node --test"

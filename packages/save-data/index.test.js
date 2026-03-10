@@ -2,7 +2,7 @@
 
 import { deepEqual } from "node:assert";
 import test from "node:test";
-import { domain, setupMocks } from "../../test-unit/helper.js";
+import { domain, setupMocks } from "../../fixtures/helper.js";
 import { strategyCacheOnly, strategyNetworkFirst } from "../core/index.js";
 import saveDataMiddleware from "./index.js";
 

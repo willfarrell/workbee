@@ -37,12 +37,6 @@ export const precacheExtractJSON = (response) => {
 	return response.json();
 };
 
-// @datastream/compress/zip - chunk == file + metadata
-// export const precacheExtractZip = (response) => {
-//   if (response.headers.get('Content-Type') !== 'application/zip') return []new
-//   // TODO
-// }
-
 export const eventActivate = (event, config) => {
 	event.waitUntil(eventActivateWaitUntil(event, config));
 	event.waitUntil(clients.claim());
@@ -119,32 +113,9 @@ export const fetchStrategy = async (request, event, config) => {
 // Event: Push Notifications
 export const periodicSyncEvent = (_event) => {};
 
-export const pushEvent = (_event, { init, shutdown }) => {
-	// https://developer.mozilla.org/en-US/docs/Web/API/PushEvent
-	/* const { type } = event.data.json()
+export const pushEvent = (_event, { init, shutdown }) => {};
 
-  switch (type) {
-    case 'init':
-      init()
-      break
-    case 'shutdown':
-      shutdown()
-      break
-  } */
-};
-
-export const notificationClickEvent = (_event) => {
-	/* event.notification.close()
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url == '/' && 'focus' in client) return client.focus()
-      }
-      if (clients.openWindow) return clients.openWindow('/')
-    })
-  ) */
-};
+export const notificationClickEvent = (_event) => {};
 
 export const backgroundFetchSuccessEvent = (event) => {
 	event.waitUntil(backgroundFetchSuccessEventWaitUntil(event));

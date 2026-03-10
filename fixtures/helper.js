@@ -202,5 +202,9 @@ Object.assign(global, {
 	caches: cachesOverride,
 	document: documentOverride,
 	fetch: fetchOverride,
-	navigtor: navigatorOverride,
+});
+Object.defineProperty(global, "navigator", {
+	value: navigatorOverride,
+	writable: true,
+	configurable: true,
 });

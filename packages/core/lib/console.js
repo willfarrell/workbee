@@ -1,2 +1,2 @@
-export const consoleLog = console.log;
-export const consoleError = console.error;
+export const consoleLog = (...args) => console.log(...args);
+export const consoleError = (...args) => console.error(...args);

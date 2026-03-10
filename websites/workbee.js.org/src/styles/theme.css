@@ -8,7 +8,10 @@ header input {
 
 .grid:has(.stat) {
 	--grid-min-width: 18ch;
-	grid-template-columns: repeat(auto-fit, var(--grid-min-width));
+	grid-template-columns: repeat(
+			auto-fit,
+			minmax(var(--grid-min-width), max-content)
+		);
 	list-style-type: none;
 	padding-inline-start: 0;
 	justify-content: center;
@@ -29,7 +32,7 @@ section.grid:has(.feature) {
 }
 .grid:has(.feature) {
 	max-width: 110ch;
-	margin: auto;
+	margin-inline: auto;
 }
 .grid > .feature {
 	--border-width: 0;
@@ -37,6 +40,10 @@ section.grid:has(.feature) {
 	padding: var(--border-radius);
 }
 
+.grid:has(.package) {
+	max-width: 110ch;
+	margin-inline: auto;
+}
 .grid > .package {
 	--border-width: 1px;
 	--border-color: var(--color-l5);

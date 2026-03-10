@@ -1,6 +1,6 @@
 /* global Response Headers */
 import { test } from "node:test";
-import "../../../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import { cacheExpired } from "./cache.js";
 
 test("perf: cacheExpired - expired response", async () => {

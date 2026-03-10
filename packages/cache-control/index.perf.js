@@ -1,6 +1,6 @@
 /* global Request Response Headers */
 import { test } from "node:test";
-import "../../test-unit/helper.js";
+import "../../fixtures/helper.js";
 import cacheControlMiddleware from "./index.js";
 
 test("perf: cacheControlMiddleware afterNetwork", async () => {

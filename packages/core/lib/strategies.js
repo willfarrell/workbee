@@ -1,4 +1,3 @@
-/* eslint-env: serviceworker */
 /* global ReadableStream */
 
 import { cacheExpired, cachePut, openCaches } from "./cache.js";
@@ -55,9 +54,8 @@ export const strategyNetworkFirst = async (request, event, config) => {
 		// Add in Expires header to allow expiry of cache without complex logic
 		const cacheControl = response.headers.get("Cache-Control");
 
-		const maxAge = cacheControl?.includes("max")
-			? Number.parseInt(cacheControl.match(cacheControlMaxAgeRegExp)[2], 10)
-			: 0;
+		const match = cacheControl?.match(cacheControlMaxAgeRegExp);
+		const maxAge = match ? Number.parseInt(match[2], 10) : 0;
 
 		if (maxAge) {
 			const responseTime = new Date(response.headers.get("Date")).getTime();
@@ -88,7 +86,9 @@ export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	let response = await strategyCacheOnly(request, event, config);
 	if (cacheExpired(response)) {
 		// cache expired, update in background
-		event.waitUntil(strategyNetworkFirst(request, event, config));
+		event.waitUntil(
+			strategyNetworkFirst(request, event, config).catch(() => {}),
+		);
 	}
 	// cache undefined
 	response ??= await strategyNetworkFirst(request, event, config);
@@ -111,37 +111,10 @@ export const strategyCacheFirstIgnore = async (request, event, config) => {
 export const strategyStatic = (response) => {
 	const strategyStatic = (request, event, config) => {
 		// Allow response to be an error
-		return response?.clone?.() ?? response;
+		return isResponse(response) ? response.clone() : response;
 	};
 	return strategyStatic;
 };
-
-/* export const strategyLocalDownload = (request, event, config) => {
-  const pathname = new URL(request.url).pathname.split('/')
-  const filename = pathname[pathname.length - 1]
-  return newResponse({status:201, body:request.body},{
-      Date: new Date().toString(),
-      'Content-Type': request.headers.get('Content-Type'),
-      'Content-Disposition': `attachment; filename="${filename}"`
-    })
-  })
-} */
-
-// From Mozilla
-/* export const strategyFormDownload = async (request, event, config) => {
-  const data = await request.formData()
-  const filename = data.get('filename')
-  const contentType = data.get('type')
-  const body = data.get('body')
-  return newResponse(body, {
-    status: 201,
-    headers: new Headers({
-      Date: new Date().toString(),
-      'Content-Type': contentType,
-      'Content-Disposition': `attachment;filename="${filename}"`
-    })
-  })
-} */
 
 export const strategyHTMLPartition = (options = {}) => {
 	options.makeRequest = (request, config, routeConfig) => {
@@ -194,48 +167,3 @@ const streamResponses = (responses) => {
 	});
 	return { body, headers, streamDeferred };
 };
-
-/* const streamResponses = (responses) => {
-  const readers = responses.map((sourcePromise) =>
-    sourcePromise.then((source) => {
-      if (source instanceof Response) {
-        headers ??= source.headers
-        return source.body.getReader()
-      }
-      if (source instanceof ReadableStream) {
-        return source.getReader()
-      }
-      return newResponse({body:source}).body.getReader()
-    })
-  )
-  let i = 0
-  let stream
-  let headers
-  const streamDeferred = new Promise((resolve, reject) => {
-    stream = new ReadableStream({
-      pull(controller) {
-        return readers[i]
-          .then((reader) => reader.read())
-          .then((result) => {
-            if (result.done) {
-              i += 1
-              if (i < readers.length) return this.pull(controller)
-
-              controller.close()
-              resolve()
-            } else {
-              controller.enqueue(result.value)
-            }
-          })
-          .catch((e) => {
-            reject(e)
-            throw e
-          })
-      },
-      cancel() {
-        resolve()
-      }
-    })
-  })
-  return { stream, headers, streamDeferred }
-} */

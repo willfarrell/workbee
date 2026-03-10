@@ -68,13 +68,17 @@ const offlineMiddleware = ({
 	};
 
 	const idbCursor = () =>
-		new Promise((resolve, _reject) => {
+		new Promise((resolve, reject) => {
 			idbStartTransaction();
-			idbObjectStore.openCursor().onsuccess = (event) =>
-				resolve(event?.target?.result);
+			const request = idbObjectStore.openCursor();
+			request.onsuccess = (event) => resolve(event?.target?.result);
+			request.onerror = (event) => reject(event?.target?.error);
 		});
 
 	const idbStartTransaction = () => {
+		if (!idbDatabase) {
+			throw new Error("IndexedDB not initialized");
+		}
 		idbTransaction = idbDatabase.transaction([objectStoreName], "readwrite");
 		idbObjectStore = idbTransaction.objectStore(objectStoreName);
 	};
@@ -132,7 +136,12 @@ const offlineMiddleware = ({
 		}
 	};
 
-	return { afterNetwork, postMessageEvent };
+	const destroy = () => {
+		clearTimeout(timer);
+		idbDatabase?.close();
+	};
+
+	return { afterNetwork, postMessageEvent, destroy };
 };
 
 export default offlineMiddleware;
@@ -172,21 +181,3 @@ export const idbSerializeRequest = async (request) => {
 export const idbDeserializeRequest = (data) => {
 	return newRequest(data.url, data);
 };
-
-/*
-// Alt attempt to avoid timers and messageEvents
-
-let onLine = navigator.onLine
-Object.defineProperty(navigator, 'onLine', {
-  get() {
-    console.log('get', onLine)
-    return onLine
-  },
-  set(value) {
-    console.log('set', value)
-    if (value) postMessageEvent()
-    onLine = value
-  }
-})
-navigator.onLine = onLine
-*/

@@ -30,4 +30,7 @@ export default defineConfig({
 	ssr: {
 		noExternal: ["prismjs"],
 	},
+	optimizeDeps: {
+		exclude: ["@willfarrell-ds/svelte", "@willfarrell-ds/vanilla"],
+	},
 });

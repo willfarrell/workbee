@@ -14,7 +14,7 @@
 		"build:styles:optimize": "ds optimize-styles ./.svelte-kit",
 		"build:svg": "npx svgo --multipass --recursive ./.svelte-kit/ -o ./.svelte-kit/",
 		"release:login": "wrangler login --browser false",
-		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/datastream/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"workbee.js.org\"}'",
+		"release:domain": "curl https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/pages/projects/workbee/domains -H 'Content-Type: application/json' -H 'Authorization: Bearer ${API_KEY_W_PAGES_EDIT}' -d '{\"name\": \"workbee.js.org\"}'",
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {

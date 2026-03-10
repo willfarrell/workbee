@@ -1,5 +1,5 @@
 import { test } from "node:test";
-import "../.././../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import {
 	strategyCacheFirst,
 	strategyCacheOnly,

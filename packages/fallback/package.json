@@ -1,7 +1,7 @@
 {
 	"name": "@work-bee/fallback",
-	"version": "0.0.4",
-	"description": "save-data workbee service worker middleware",
+	"version": "0.0.5",
+	"description": "fallback workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
 		"access": "public"
@@ -23,22 +23,30 @@
 		"test": "node --test"
 	},
 	"dependencies": {
-		"@work-bee/core": "0.0.4"
+		"@work-bee/core": "0.0.5"
 	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/willfarrell/workbee.git",
+		"directory": "packages/fallback"
+	},
+	"homepage": "https://workbee.js.org/docs/packages/fallback",
 	"keywords": [
 		"workbee",
 		"service",
 		"worker",
 		"sw",
-		"strategies",
+		"fallback",
 		"cache",
 		"network"
 	],
+	"engines": {
+		"node": ">=24"
+	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {
 		"type": "github",
 		"url": "https://github.com/sponsors/willfarrell"
-	},
-	"gitHead": "897cf8176c4df45d4ac0150283a37a5a52dd9199"
+	}
 }

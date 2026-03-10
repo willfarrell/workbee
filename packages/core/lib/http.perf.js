@@ -1,6 +1,6 @@
 /* global Headers Request Response */
 import { test } from "node:test";
-import "../../../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import {
 	addHeaderToRequest,
 	addHeaderToResponse,

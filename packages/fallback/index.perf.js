@@ -1,6 +1,6 @@
 /* global Request Response */
 import { test } from "node:test";
-import "../../test-unit/helper.js";
+import "../../fixtures/helper.js";
 import fallbackMiddleware from "./index.js";
 
 test("perf: fallbackMiddleware after - ok response (passthrough)", async () => {

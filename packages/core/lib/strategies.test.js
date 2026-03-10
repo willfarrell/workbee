@@ -3,11 +3,12 @@
 import { deepEqual, equal } from "node:assert";
 import test from "node:test";
 import { setTimeout } from "node:timers/promises";
-import { domain, setupMocks, spy } from "../../../test-unit/helper.js";
+import { domain, setupMocks, spy } from "../../../fixtures/helper.js";
 import {
 	compileConfig,
 	fetchInlineStrategy,
 	fetchStrategy,
+	openCaches,
 	pathPattern,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
@@ -102,6 +103,25 @@ test("Strategies", async (t) => {
 	});
 
 	// *** strategyCacheOnly *** //
+	await t.test(
+		"strategyCacheOnly: Should return undefined when cache is not open",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/200`, {
+					method: "GET",
+				}),
+			};
+
+			const { config } = setupMocks(strategyCacheOnly);
+			// Remove the cache so openCaches[cacheKey] is undefined
+			delete openCaches[config.cacheKey];
+
+			const response = await strategyCacheOnly(event.__request, event, config);
+
+			equal(response, undefined);
+		},
+	);
+
 	await t.test(
 		"strategyCacheOnly: Should resolve undefined from cache when not found",
 		async (_t) => {
@@ -553,6 +573,41 @@ test("Strategies", async (t) => {
 		},
 	);
 
+	await t.test(
+		"strategyStaleWhileRevalidate: Should swallow background revalidation error",
+		async (_t) => {
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/offline`, {
+					method: "GET",
+				}),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			// Use cache/expired for initial match, but background revalidation
+			// will call strategyCacheOnly which returns expired → then strategyNetworkFirst
+			// throws → catch(() => {}) swallows it
+			const { cache, config } = setupMocks(
+				strategyStaleWhileRevalidate,
+				`${domain}/cache/expired`,
+			);
+			// After first match, make cache return undefined so background
+			// networkFirst fallback to cacheOnly finds nothing and throws
+			const origMatch = cache.match;
+			let matchCallCount = 0;
+			cache.match = (...args) => {
+				matchCallCount++;
+				if (matchCallCount > 1) return undefined;
+				return origMatch(...args);
+			};
+
+			const response = await fetchStrategy(event.__request, event, config);
+
+			equal(response.status, 200);
+			// Wait for background revalidation (which should fail and be caught)
+			await Promise.all(waitUntils);
+		},
+	);
+
 	// *** strategyIgnore *** //
 	await t.test("strategyIgnore: Should always return 408", async (_t) => {
 		const event = {
@@ -700,6 +755,82 @@ test("Strategies", async (t) => {
 			const result = await fetchInlineStrategy(event.__request, event, config);
 
 			equal(result, error);
+		},
+	);
+
+	// *** strategyPartition *** //
+	await t.test(
+		"strategyPartition: Should work without makeRequest option",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, {
+					method: "GET",
+				}),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const nestedMiddleware = {
+				before: spy((request) => request),
+				beforeNetwork: spy((request) => request),
+				afterNetwork: spy((_request, response) => response),
+				after: spy((_request, response) => response),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "/200" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [nestedMiddleware],
+					}),
+				),
+			);
+
+			const response = await fetchStrategy(event.__request, event, config);
+			// Must consume the stream body so pull() completes and streamDeferred resolves
+			await response.text();
+			await Promise.all(waitUntils);
+
+			equal(response.status, 200);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: Should resolve stream cancel",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, {
+					method: "GET",
+				}),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const nestedMiddleware = {
+				before: spy((request) => request),
+				beforeNetwork: spy((request) => request),
+				afterNetwork: spy((_request, response) => response),
+				after: spy((_request, response) => response),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [
+							{ path: "$1/header" },
+							{ path: "$1/main" },
+							{ path: "$1/footer" },
+						],
+						strategy: strategyNetworkOnly,
+						middlewares: [nestedMiddleware],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			// Cancel the stream to trigger the cancel() callback (line 164)
+			await response.body.cancel();
+			await Promise.all(waitUntils);
 		},
 	);
 

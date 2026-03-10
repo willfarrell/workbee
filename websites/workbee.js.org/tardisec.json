@@ -2,7 +2,7 @@
 	"$schema": "https://schema.tardisec.com/0.0.0-alpha.0",
 	"raw": {
 		"Content-Security-Policy": null,
-		"Content-Security-Policy-Report-Only": "base-uri 'none';default-src 'report-sample' 'report-sha256';form-action 'none';frame-ancestors 'none';report-to default;report-uri https://datastream.js.org.report-to.org;require-trusted-types-for 'script'",
+		"Content-Security-Policy-Report-Only": "base-uri 'none';default-src 'report-sample' 'report-sha256';form-action 'none';frame-ancestors 'none';report-to default;report-uri https://workbee.js.org.report-to.org;require-trusted-types-for 'script'",
 		"Cross-Origin-Embedder-Policy": "require-corp;report-to=default",
 		"Cross-Origin-Embedder-Policy-Report-Only": null,
 		"Cross-Origin-Opener-Policy": "same-origin;report-to=default",

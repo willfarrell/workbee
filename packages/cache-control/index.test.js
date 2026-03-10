@@ -7,7 +7,7 @@ import {
 	domain,
 	fetchOverride,
 	setupMocks,
-} from "../../test-unit/helper.js";
+} from "../../fixtures/helper.js";
 import cacheControlMiddleware from "./index.js";
 
 // Mocks

@@ -2,7 +2,7 @@
 
 import { equal, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
-import "../../../test-unit/helper.js";
+import "../../../fixtures/helper.js";
 import {
 	cacheDeleteExpired,
 	cacheExpired,
@@ -39,6 +39,16 @@ test("cache", async (t) => {
 			const futureDate = new Date(Date.now() + 86400 * 1000).toString();
 			const response = new Response("", {
 				headers: new Headers({ Expires: futureDate }),
+			});
+			strictEqual(cacheExpired(response), false);
+		},
+	);
+
+	await t.test(
+		"cacheExpired: should return false when no Expires header",
+		async () => {
+			const response = new Response("", {
+				headers: new Headers({}),
 			});
 			strictEqual(cacheExpired(response), false);
 		},
@@ -108,6 +118,26 @@ test("cache", async (t) => {
 			);
 
 			// Restore
+			globalThis.caches.open = originalOpen;
+		},
+	);
+
+	await t.test(
+		"cacheDeleteExpired: should handle matchAll returning nullish",
+		async () => {
+			const deleteFn = mock.fn();
+			const mockCache = {
+				matchAll: () => Promise.resolve(null),
+				delete: deleteFn,
+			};
+
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.open = () => Promise.resolve(mockCache);
+
+			await cacheDeleteExpired("test-null");
+
+			equal(deleteFn.mock.callCount(), 0);
+
 			globalThis.caches.open = originalOpen;
 		},
 	);

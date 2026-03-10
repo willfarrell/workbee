@@ -1,6 +1,6 @@
 /* global Request */
 import { test } from "node:test";
-import { domain, setupMocks } from "../../../test-unit/helper.js";
+import { domain, setupMocks } from "../../../fixtures/helper.js";
 import {
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
