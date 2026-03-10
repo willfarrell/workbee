@@ -15,6 +15,7 @@
 		"fixtures/*",
 		"CNAME",
 		"commitlint.config.cjs",
+		"playwright.config.js",
 		"docs/**/*",
 		"LICENSE",
 		"license.template",
@@ -25,7 +26,8 @@
 		"**/*.tst.ts",
 		"**/*.md",
 		"**/*.yml",
-		"test/**/*",
+		"tests/**/*",
+		"tests-e2e/**/*",
 		"websites/**/*",
 		".DS_Store"
 	]
