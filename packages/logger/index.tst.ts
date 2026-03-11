@@ -1,19 +1,18 @@
 /// <reference lib="webworker" />
 
+import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 import logger from "@work-bee/logger";
 import { describe, expect, test } from "tstyche";
-
-/** @typedef {import("@work-bee/core").BeforeMiddleware} BeforeMiddleware */
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
 
 describe("logger", () => {
 	test("returns LoggerMiddlewareResult with defaults", () => {
 		const result = logger();
-		expect(result).type.toBe(
-			/** @type {{ before: BeforeMiddleware | false; beforeNetwork: BeforeMiddleware | false; afterNetwork: AfterMiddleware | false; after: AfterMiddleware | false }} */ (
-				/** @type {unknown} */ (undefined)
-			),
-		);
+		expect(result).type.toBe<{
+			before: BeforeMiddleware | false;
+			beforeNetwork: BeforeMiddleware | false;
+			afterNetwork: AfterMiddleware | false;
+			after: AfterMiddleware | false;
+		}>();
 	});
 
 	test("accepts all options", () => {
@@ -32,10 +31,6 @@ describe("logger", () => {
 			runOnAfterNetwork: true,
 			runOnAfter: false,
 		});
-		expect(result.before).type.toBe(
-			/** @type {BeforeMiddleware | false} */ (
-				/** @type {unknown} */ (undefined)
-			),
-		);
+		expect(result.before).type.toBe<BeforeMiddleware | false>();
 	});
 });

@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 
+import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 import session, {
 	getExpiryJWT,
 	getExpiryPaseto,
@@ -8,29 +9,24 @@ import session, {
 } from "@work-bee/session";
 import { describe, expect, test } from "tstyche";
 
-/** @typedef {import("@work-bee/core").BeforeMiddleware} BeforeMiddleware */
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
-
 describe("session", () => {
 	test("returns SessionMiddlewareResult", () => {
 		const result = session({});
-		expect(result).type.toBe(
-			/** @type {{ before?: BeforeMiddleware; afterNetwork?: AfterMiddleware; after?: AfterMiddleware; activityEvent: () => void }} */ (
-				/** @type {unknown} */ (undefined)
-			),
-		);
+		expect(result).type.toBe<{
+			before?: BeforeMiddleware;
+			afterNetwork?: AfterMiddleware;
+			after?: AfterMiddleware;
+			activityEvent: () => void;
+		}>();
 	});
 
 	test("activityEvent returns void", () => {
 		const result = session({});
-		expect(result.activityEvent()).type.toBe(
-			/** @type {void} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.activityEvent()).type.toBe<void>();
 	});
 
 	test("requires opts parameter", () => {
-		// @ts-expect-error Expected 1 arguments, but got 0.
-		session();
+		expect(session).type.not.toBeCallableWith();
 	});
 
 	test("accepts all options", () => {
@@ -48,37 +44,18 @@ describe("session", () => {
 	});
 
 	test("getTokenAuthorization returns string", () => {
-		expect(
-			getTokenAuthorization(
-				/** @type {Response} */ (/** @type {unknown} */ ({})),
-			),
-		).type.toBe(/** @type {string} */ (/** @type {unknown} */ (undefined)));
+		expect(getTokenAuthorization({} as Response)).type.toBe<string>();
 	});
 
 	test("getExpiryJWT returns number", () => {
-		expect(
-			getExpiryJWT(
-				/** @type {Response} */ (/** @type {unknown} */ ({})),
-				"token",
-			),
-		).type.toBe(/** @type {number} */ (/** @type {unknown} */ (undefined)));
+		expect(getExpiryJWT({} as Response, "token")).type.toBe<number>();
 	});
 
 	test("getExpiryPaseto returns number", () => {
-		expect(
-			getExpiryPaseto(
-				/** @type {Response} */ (/** @type {unknown} */ ({})),
-				"token",
-			),
-		).type.toBe(/** @type {number} */ (/** @type {unknown} */ (undefined)));
+		expect(getExpiryPaseto({} as Response, "token")).type.toBe<number>();
 	});
 
 	test("setTokenAuthorization returns Request", () => {
-		expect(
-			setTokenAuthorization(
-				/** @type {Request} */ (/** @type {unknown} */ ({})),
-				"token",
-			),
-		).type.toBe(/** @type {Request} */ (/** @type {unknown} */ (undefined)));
+		expect(setTokenAuthorization({} as Request, "token")).type.toBe<Request>();
 	});
 });

@@ -1,31 +1,22 @@
 /// <reference lib="webworker" />
 
 import cacheControl from "@work-bee/cache-control";
+import type { AfterMiddleware } from "@work-bee/core";
 import { describe, expect, test } from "tstyche";
-
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
 
 describe("cache-control", () => {
 	test("returns CacheControlMiddlewareResult", () => {
 		const result = cacheControl({ cacheControl: "max-age=3600" });
-		expect(result).type.toBe(
-			/** @type {{ afterNetwork: AfterMiddleware }} */ (
-				/** @type {unknown} */ (undefined)
-			),
-		);
+		expect(result).type.toBe<{ afterNetwork: AfterMiddleware }>();
 	});
 
 	test("afterNetwork is AfterMiddleware", () => {
 		const result = cacheControl({ cacheControl: "max-age=3600" });
-		expect(result.afterNetwork).type.toBe(
-			/** @type {AfterMiddleware} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.afterNetwork).type.toBe<AfterMiddleware>();
 	});
 
 	test("requires cacheControl option", () => {
-		// @ts-expect-error Expected 1 arguments, but got 0.
-		cacheControl();
-		// @ts-expect-error Property 'cacheControl' is missing
-		cacheControl({});
+		expect(cacheControl).type.not.toBeCallableWith();
+		expect(cacheControl).type.not.toBeCallableWith({});
 	});
 });
