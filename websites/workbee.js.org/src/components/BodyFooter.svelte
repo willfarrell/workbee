@@ -16,6 +16,7 @@ const navLinks = {
 		npm: "https://www.npmjs.com/package/@work-bee/core",
 		"OpenSSF Scorecard":
 			"https://scorecard.dev/viewer/?uri=github.com/willfarrell/workbee",
+		"LLMs (Large Language Models)": "/llms.txt",
 	},
 };
 </script>

@@ -4,7 +4,8 @@ const _results = $derived(data.results);
 </script>
 
 <svelte:head>
-    <title>Search | datastream</title>
+    <title>Search | WorkBee</title>
+    <meta name="description" content="Search the WorkBee documentation." />
 </svelte:head>
 <LayoutCenter>
     <Section>
@@ -13,10 +14,10 @@ const _results = $derived(data.results);
             <Ul class="grid">
                 {#each results as card}
                     <Card id={card.id}>
-                        <H3
+                        <H2
                             ><A href={card.href} aria-describedby={card.id}
                                 >{card.title}</A
-                            ></H3
+                            ></H2
                         >
                         {#if card.description}
                             <P>{@html card.description}</P>

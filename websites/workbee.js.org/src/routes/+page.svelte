@@ -153,35 +153,35 @@ addEventListener("fetch", (event) => eventFetch(event, config))`}</code></pre>
             <H2>Packages</H2>
         </Div>
         <Ul class="grid">
-            <Card href="/docs/packages/core" class="package" id="core">
+            <Card class="package" id="core">
                 <H3><A href="/docs/packages/core">@work-bee/core</A></H3>
                 <P>Caching strategies and events</P>
             </Card>
-            <Card href="/docs/packages/cache-control" class="package" id="cache-control">
+            <Card class="package" id="cache-control">
                 <H3><A href="/docs/packages/cache-control">@work-bee/cache-control</A></H3>
                 <P>HTTP Cache-Control middleware</P>
             </Card>
-            <Card href="/docs/packages/fallback" class="package" id="fallback">
+            <Card class="package" id="fallback">
                 <H3><A href="/docs/packages/fallback">@work-bee/fallback</A></H3>
                 <P>Fallback response middleware</P>
             </Card>
-            <Card href="/docs/packages/inactivity" class="package" id="inactivity">
+            <Card class="package" id="inactivity">
                 <H3><A href="/docs/packages/inactivity">@work-bee/inactivity</A></H3>
                 <P>User inactivity detection</P>
             </Card>
-            <Card href="/docs/packages/logger" class="package" id="logger">
+            <Card class="package" id="logger">
                 <H3><A href="/docs/packages/logger">@work-bee/logger</A></H3>
                 <P>Logging middleware</P>
             </Card>
-            <Card href="/docs/packages/offline" class="package" id="offline">
+            <Card class="package" id="offline">
                 <H3><A href="/docs/packages/offline">@work-bee/offline</A></H3>
                 <P>Offline request queueing</P>
             </Card>
-            <Card href="/docs/packages/save-data" class="package" id="save-data">
+            <Card class="package" id="save-data">
                 <H3><A href="/docs/packages/save-data">@work-bee/save-data</A></H3>
                 <P>Save-Data header middleware</P>
             </Card>
-            <Card href="/docs/packages/session" class="package" id="session">
+            <Card class="package" id="session">
                 <H3><A href="/docs/packages/session">@work-bee/session</A></H3>
                 <P>Session management middleware</P>
             </Card>
