@@ -76,7 +76,6 @@
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
 		"@playwright/test": "^1.27.0",
-		"@tsconfig/node24": "^24.0.0",
 		"esbuild": "^0.27.0",
 		"fake-indexeddb": "^4.0.0",
 		"fast-check": "^4.0.0",
