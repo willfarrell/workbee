@@ -11,27 +11,23 @@ import { describe, expect, test } from "tstyche";
 describe("save-data", () => {
 	test("returns SaveDataMiddlewareResult", () => {
 		const result = saveData({});
-		expect(result).type.toBe(
-			undefined as unknown as {
-				before: BeforeMiddleware;
-				after: AfterMiddleware;
-			},
-		);
+		expect(result).type.toBe<{
+			before: BeforeMiddleware;
+			after: AfterMiddleware;
+		}>();
 	});
 
 	test("before is BeforeMiddleware", () => {
 		const result = saveData({});
-		expect(result.before).type.toBe(undefined as unknown as BeforeMiddleware);
+		expect(result.before).type.toBe<BeforeMiddleware>();
 	});
 
 	test("after is AfterMiddleware", () => {
 		const result = saveData({});
-		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
+		expect(result.after).type.toBe<AfterMiddleware>();
 	});
 
 	test("accepts saveDataStrategy option", () => {
-		saveData({
-			saveDataStrategy: undefined as unknown as Strategy,
-		});
+		saveData({ saveDataStrategy: {} as Strategy });
 	});
 });

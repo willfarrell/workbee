@@ -8,23 +8,21 @@ import { describe, expect, test } from "tstyche";
 describe("inactivity", () => {
 	test("returns InactivityMiddlewareResult", () => {
 		const result = inactivity();
-		expect(result).type.toBe(
-			undefined as unknown as {
-				before: BeforeMiddleware;
-				after: AfterMiddleware;
-				postMessageEvent: () => void;
-			},
-		);
+		expect(result).type.toBe<{
+			before: BeforeMiddleware;
+			after: AfterMiddleware;
+			postMessageEvent: () => void;
+		}>();
 	});
 
 	test("before is BeforeMiddleware", () => {
 		const result = inactivity();
-		expect(result.before).type.toBe(undefined as unknown as BeforeMiddleware);
+		expect(result.before).type.toBe<BeforeMiddleware>();
 	});
 
 	test("after is AfterMiddleware", () => {
 		const result = inactivity();
-		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
+		expect(result.after).type.toBe<AfterMiddleware>();
 	});
 
 	test("postMessageEvent returns void", () => {
