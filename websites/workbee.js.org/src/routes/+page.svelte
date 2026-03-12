@@ -200,4 +200,16 @@ addEventListener("fetch", (event) => eventFetch(event, config))`}</code></pre>
             </Div>
         </Div>
     </Section>
+
+    <Section class="slice vertical">
+        <Div class="inline-center">
+            <P>
+                <A href="https://github.com/sponsors/willfarrell" class="button"
+                    ><Icon src="/img/icons.svg#heart" /><Span
+                        >Become a sponsor</Span
+                    >
+                </A></P
+            >
+        </Div>
+    </Section>
 </LayoutSlices>
