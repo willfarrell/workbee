@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/inactivity",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "inactivity workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -35,7 +35,7 @@
 	},
 	"homepage": "https://workbee.js.org/docs/packages/inactivity",
 	"dependencies": {
-		"@work-bee/core": "0.1.0"
+		"@work-bee/core": "0.1.1"
 	},
 	"keywords": [
 		"workbee",
