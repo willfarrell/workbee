@@ -7,14 +7,12 @@ import { describe, expect, test } from "tstyche";
 describe("fallback", () => {
 	test("returns FallbackMiddlewareResult", () => {
 		const result = fallback({});
-		expect(result).type.toBe(
-			undefined as unknown as { after: AfterMiddleware },
-		);
+		expect(result).type.toBe<{ after: AfterMiddleware }>();
 	});
 
 	test("after is AfterMiddleware", () => {
 		const result = fallback({});
-		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
+		expect(result.after).type.toBe<AfterMiddleware>();
 	});
 
 	test("accepts all options", () => {
@@ -23,6 +21,6 @@ describe("fallback", () => {
 			path: "/fallback.html",
 			statusCodes: [404, 500],
 		});
-		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
+		expect(result.after).type.toBe<AfterMiddleware>();
 	});
 });
