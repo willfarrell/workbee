@@ -1,25 +1,20 @@
 /// <reference lib="webworker" />
 
+import type { AfterMiddleware } from "@work-bee/core";
 import fallback from "@work-bee/fallback";
 import { describe, expect, test } from "tstyche";
-
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
 
 describe("fallback", () => {
 	test("returns FallbackMiddlewareResult", () => {
 		const result = fallback({});
 		expect(result).type.toBe(
-			/** @type {{ after: AfterMiddleware }} */ (
-				/** @type {unknown} */ (undefined)
-			),
+			undefined as unknown as { after: AfterMiddleware },
 		);
 	});
 
 	test("after is AfterMiddleware", () => {
 		const result = fallback({});
-		expect(result.after).type.toBe(
-			/** @type {AfterMiddleware} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
 	});
 
 	test("accepts all options", () => {
@@ -28,8 +23,6 @@ describe("fallback", () => {
 			path: "/fallback.html",
 			statusCodes: [404, 500],
 		});
-		expect(result.after).type.toBe(
-			/** @type {AfterMiddleware} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
 	});
 });

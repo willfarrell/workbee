@@ -1,24 +1,21 @@
 /// <reference lib="webworker" />
 
 import cacheControl from "@work-bee/cache-control";
+import type { AfterMiddleware } from "@work-bee/core";
 import { describe, expect, test } from "tstyche";
-
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
 
 describe("cache-control", () => {
 	test("returns CacheControlMiddlewareResult", () => {
 		const result = cacheControl({ cacheControl: "max-age=3600" });
 		expect(result).type.toBe(
-			/** @type {{ afterNetwork: AfterMiddleware }} */ (
-				/** @type {unknown} */ (undefined)
-			),
+			undefined as unknown as { afterNetwork: AfterMiddleware },
 		);
 	});
 
 	test("afterNetwork is AfterMiddleware", () => {
 		const result = cacheControl({ cacheControl: "max-age=3600" });
 		expect(result.afterNetwork).type.toBe(
-			/** @type {AfterMiddleware} */ (/** @type {unknown} */ (undefined)),
+			undefined as unknown as AfterMiddleware,
 		);
 	});
 
