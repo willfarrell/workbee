@@ -7,14 +7,12 @@ import { describe, expect, test } from "tstyche";
 describe("logger", () => {
 	test("returns LoggerMiddlewareResult with defaults", () => {
 		const result = logger();
-		expect(result).type.toBe(
-			undefined as unknown as {
-				before: BeforeMiddleware | false;
-				beforeNetwork: BeforeMiddleware | false;
-				afterNetwork: AfterMiddleware | false;
-				after: AfterMiddleware | false;
-			},
-		);
+		expect(result).type.toBe<{
+			before: BeforeMiddleware | false;
+			beforeNetwork: BeforeMiddleware | false;
+			afterNetwork: AfterMiddleware | false;
+			after: AfterMiddleware | false;
+		}>();
 	});
 
 	test("accepts all options", () => {
@@ -33,8 +31,6 @@ describe("logger", () => {
 			runOnAfterNetwork: true,
 			runOnAfter: false,
 		});
-		expect(result.before).type.toBe(
-			undefined as unknown as BeforeMiddleware | false,
-		);
+		expect(result.before).type.toBe<BeforeMiddleware | false>();
 	});
 });

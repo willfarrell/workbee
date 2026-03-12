@@ -12,14 +12,12 @@ import { describe, expect, test } from "tstyche";
 describe("session", () => {
 	test("returns SessionMiddlewareResult", () => {
 		const result = session({});
-		expect(result).type.toBe(
-			undefined as unknown as {
-				before?: BeforeMiddleware;
-				afterNetwork?: AfterMiddleware;
-				after?: AfterMiddleware;
-				activityEvent: () => void;
-			},
-		);
+		expect(result).type.toBe<{
+			before?: BeforeMiddleware;
+			afterNetwork?: AfterMiddleware;
+			after?: AfterMiddleware;
+			activityEvent: () => void;
+		}>();
 	});
 
 	test("activityEvent returns void", () => {
@@ -28,8 +26,7 @@ describe("session", () => {
 	});
 
 	test("requires opts parameter", () => {
-		// @ts-expect-error Expected 1 arguments, but got 0.
-		session();
+		expect(session).type.not.toBeCallableWith();
 	});
 
 	test("accepts all options", () => {
@@ -47,26 +44,18 @@ describe("session", () => {
 	});
 
 	test("getTokenAuthorization returns string", () => {
-		expect(getTokenAuthorization({} as unknown as Response)).type.toBe(
-			undefined as unknown as string,
-		);
+		expect(getTokenAuthorization({} as Response)).type.toBe<string>();
 	});
 
 	test("getExpiryJWT returns number", () => {
-		expect(getExpiryJWT({} as unknown as Response, "token")).type.toBe(
-			undefined as unknown as number,
-		);
+		expect(getExpiryJWT({} as Response, "token")).type.toBe<number>();
 	});
 
 	test("getExpiryPaseto returns number", () => {
-		expect(getExpiryPaseto({} as unknown as Response, "token")).type.toBe(
-			undefined as unknown as number,
-		);
+		expect(getExpiryPaseto({} as Response, "token")).type.toBe<number>();
 	});
 
 	test("setTokenAuthorization returns Request", () => {
-		expect(setTokenAuthorization({} as unknown as Request, "token")).type.toBe(
-			undefined as unknown as Request,
-		);
+		expect(setTokenAuthorization({} as Request, "token")).type.toBe<Request>();
 	});
 });
