@@ -183,7 +183,7 @@ describe("lib/events", () => {
 				{} as unknown as ExtendableEvent,
 				{} as unknown as WorkBeeConfig,
 			),
-		).type.toBe(undefined as unknown as undefined);
+		).type.toBe<void>();
 	});
 
 	test("eventActivate returns void", () => {
@@ -192,13 +192,13 @@ describe("lib/events", () => {
 				{} as unknown as ExtendableEvent,
 				{} as unknown as WorkBeeConfig,
 			),
-		).type.toBe(undefined as unknown as undefined);
+		).type.toBe<void>();
 	});
 
 	test("eventFetch returns void", () => {
 		expect(
 			eventFetch({} as unknown as FetchEvent, {} as unknown as WorkBeeConfig),
-		).type.toBe(undefined as unknown as undefined);
+		).type.toBe<void>();
 	});
 
 	test("findRouteConfig returns RouteConfig", () => {

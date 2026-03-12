@@ -29,9 +29,7 @@ describe("inactivity", () => {
 
 	test("postMessageEvent returns void", () => {
 		const result = inactivity();
-		expect(result.postMessageEvent()).type.toBe(
-			undefined as unknown as undefined,
-		);
+		expect(result.postMessageEvent()).type.toBe<void>();
 	});
 
 	test("accepts all options", () => {
@@ -42,12 +40,10 @@ describe("inactivity", () => {
 	});
 
 	test("inactivityClient accepts events array", () => {
-		expect(inactivityClient(["click", "keydown"])).type.toBe(
-			undefined as unknown as undefined,
-		);
+		expect(inactivityClient(["click", "keydown"])).type.toBe<void>();
 	});
 
 	test("inactivityClient accepts no arguments", () => {
-		expect(inactivityClient()).type.toBe(undefined as unknown as undefined);
+		expect(inactivityClient()).type.toBe<void>();
 	});
 });

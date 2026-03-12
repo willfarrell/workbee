@@ -24,7 +24,7 @@ describe("session", () => {
 
 	test("activityEvent returns void", () => {
 		const result = session({});
-		expect(result.activityEvent()).type.toBe(undefined as unknown as undefined);
+		expect(result.activityEvent()).type.toBe<void>();
 	});
 
 	test("requires opts parameter", () => {
