@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/monorepo",
-	"version": "0.0.5",
+	"version": "0.1.0",
 	"description": "",
 	"private": true,
 	"type": "module",
@@ -10,7 +10,6 @@
 	"engineStrict": true,
 	"scripts": {
 		"prepare": "husky",
-		"preinstall": "npm link --workspaces",
 		"git:pre-commit": "npm run git:lint-staged && npm run git:test-staged",
 		"git:commit-msg": "commitlint --config commitlint.config.cjs --edit",
 		"git:lint-staged": "npm run test:lint",
@@ -42,7 +41,7 @@
 		"audit": "npm audit fix --workspaces",
 		"release:license:add": "license-check-and-add add -f license.json",
 		"release:license:remove": "license-check-and-add remove -f license.json",
-		"release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@work-bee/(.*)\\\": ([^,]*)|\\\"@work-bee/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm:node_modules && npm link --workspaces && npm install",
+		"release:sync": "npm version $npm_package_version --workspaces && find ./packages -name \"package.json\" -exec sed -i '' -E \"s|\\\"@work-bee/(.*)\\\": ([^,]*)|\\\"@work-bee/\\1\\\": $(npm pkg get version)|g\" {} \\; && npm run rm && npm install",
 		"release:tag": "git tag $npm_package_version"
 	},
 	"repository": {
@@ -76,7 +75,6 @@
 		"@commitlint/cli": "^20.0.0",
 		"@commitlint/config-conventional": "^20.0.0",
 		"@playwright/test": "^1.27.0",
-		"@tsconfig/node24": "^24.0.0",
 		"esbuild": "^0.27.0",
 		"fake-indexeddb": "^4.0.0",
 		"fast-check": "^4.0.0",

@@ -1,40 +1,37 @@
 /// <reference lib="webworker" />
 
+import type {
+	AfterMiddleware,
+	BeforeMiddleware,
+	Strategy,
+} from "@work-bee/core";
 import saveData from "@work-bee/save-data";
 import { describe, expect, test } from "tstyche";
-
-/** @typedef {import("@work-bee/core").BeforeMiddleware} BeforeMiddleware */
-/** @typedef {import("@work-bee/core").AfterMiddleware} AfterMiddleware */
 
 describe("save-data", () => {
 	test("returns SaveDataMiddlewareResult", () => {
 		const result = saveData({});
 		expect(result).type.toBe(
-			/** @type {{ before: BeforeMiddleware; after: AfterMiddleware }} */ (
-				/** @type {unknown} */ (undefined)
-			),
+			undefined as unknown as {
+				before: BeforeMiddleware;
+				after: AfterMiddleware;
+			},
 		);
 	});
 
 	test("before is BeforeMiddleware", () => {
 		const result = saveData({});
-		expect(result.before).type.toBe(
-			/** @type {BeforeMiddleware} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.before).type.toBe(undefined as unknown as BeforeMiddleware);
 	});
 
 	test("after is AfterMiddleware", () => {
 		const result = saveData({});
-		expect(result.after).type.toBe(
-			/** @type {AfterMiddleware} */ (/** @type {unknown} */ (undefined)),
-		);
+		expect(result.after).type.toBe(undefined as unknown as AfterMiddleware);
 	});
 
 	test("accepts saveDataStrategy option", () => {
 		saveData({
-			saveDataStrategy: /** @type {import("@work-bee/core").Strategy} */ (
-				/** @type {unknown} */ (undefined)
-			),
+			saveDataStrategy: undefined as unknown as Strategy,
 		});
 	});
 });

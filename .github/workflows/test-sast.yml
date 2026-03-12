@@ -22,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Trivy
-        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # v0.34.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scanners: vuln
           scan-type: fs
@@ -48,7 +48,7 @@ jobs:
         run: |
           npm ci --ignore-scripts
       - name: Trivy
-        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # v0.34.0
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scanners: license
           scan-type: fs
@@ -76,6 +76,22 @@ jobs:
       - name: lockfile-lint
         run: |
           ./node_modules/.bin/lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https
+
+  # https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#github-actions
+  semgrep:
+    name: "semgrep: SAST"
+    runs-on: ubuntu-latest
+
+    container:
+      # https://hub.docker.com/r/semgrep/semgrep/tags
+      image: semgrep/semgrep:1.111.0 # v1.111.0
+
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: semgrep
+        run: semgrep ci
 
   # https://github.com/github/codeql-action
   codeql:
