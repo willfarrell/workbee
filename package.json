@@ -15,7 +15,7 @@
 		"git:lint-staged": "npm run test:lint",
 		"git:test-staged": "which node && node -v && node --test ./packages/*",
 		"lint": "biome check --write --no-errors-on-unmatched",
-		"test": "npm run test:lint && npm run test:unit && npm run test:sast && npm run test:perf && npm run test:dast",
+		"test": "npm run test:lint && npm run test:unit && npm run test:types && npm run test:sast && npm run test:perf && npm run test:dast",
 		"test:lint": "biome check --staged --no-errors-on-unmatched",
 		"test:unit": "node --test --test-force-exit --experimental-test-module-mocks './**/*.test.js'",
 		"test:sast": "npm run test:sast:license && npm run test:sast:lockfile && npm run test:sast:semgrep && npm run test:sast:trufflehog && npm run test:sast:trivy && npm run test:sast:ort",
@@ -85,10 +85,17 @@
 	},
 	"overrides": {
 		"@sveltejs/kit": {
+			"cookie": "0.7.2",
+			"devalue": "5.6.4"
+		},
+		"svelte": {
+			"devalue": "5.6.4"
+		},
+		"youch": {
 			"cookie": "0.7.2"
 		},
 		"license-check-and-add": {
-			"minimatch": "10.2.2"
+			"minimatch": "^10.2.4"
 		}
 	},
 	"workspaces": [
