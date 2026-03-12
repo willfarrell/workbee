@@ -77,6 +77,22 @@ jobs:
         run: |
           ./node_modules/.bin/lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https
 
+  # https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#github-actions
+  semgrep:
+    name: "semgrep: SAST"
+    runs-on: ubuntu-latest
+
+    container:
+      # https://hub.docker.com/r/semgrep/semgrep/tags
+      image: semgrep/semgrep:1.111.0 # v1.111.0
+
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: semgrep
+        run: semgrep ci
+
   # https://github.com/github/codeql-action
   codeql:
     name: "CodeQL: SAST"
