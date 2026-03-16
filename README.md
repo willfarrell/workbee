@@ -3,14 +3,19 @@
   <p><strong>A tiny ServiceWorker for secure web applications.</strong></p>
 <p>
   <a href="https://github.com/willfarrell/workbee/actions/workflows/test-unit.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-unit.yml/badge.svg" alt="GitHub Actions unit test status"></a>
+  <a href="https://github.com/willfarrell/workbee/actions/workflows/test-dast.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-dast.yml/badge.svg" alt="GitHub Actions dast test status"></a>
+  <a href="https://github.com/willfarrell/workbee/actions/workflows/test-perf.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-perf.yml/badge.svg" alt="GitHub Actions perf test status"></a>
   <a href="https://github.com/willfarrell/workbee/actions/workflows/test-sast.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-sast.yml/badge.svg" alt="GitHub Actions SAST test status"></a>
   <a href="https://github.com/willfarrell/workbee/actions/workflows/test-lint.yml"><img src="https://github.com/willfarrell/workbee/actions/workflows/test-lint.yml/badge.svg" alt="GitHub Actions lint test status"></a>
   <br/>
   <a href="https://www.npmjs.com/package/@work-bee/core"><img alt="npm version" src="https://img.shields.io/npm/v/@work-bee/core.svg"></a>
   <a href="https://packagephobia.com/result?p=@work-bee/core"><img src="https://packagephobia.com/badge?p=@work-bee/core" alt="npm install size"></a>
   <a href="https://www.npmjs.com/package/@work-bee/core"><img alt="npm weekly downloads" src="https://img.shields.io/npm/dw/@work-bee/core.svg"></a>
+  <a href="https://www.npmjs.com/package/@work-bee/core#provenance">
+  <img alt="npm provenance" src="https://img.shields.io/badge/provenance-Yes-brightgreen"></a>
   <br/>
   <a href="https://scorecard.dev/viewer/?uri=github.com/willfarrell/workbee"><img src="https://api.scorecard.dev/projects/github.com/willfarrell/workbee/badge" alt="Open Source Security Foundation (OpenSSF) Scorecard"></a>
+  <a href="https://slsa.dev"><img src="https://slsa.dev/images/gh-badge-level3.svg" alt="SLSA 3"></a>
   <a href="https://github.com/willfarrell/workbee/blob/main/CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg"></a>
   <a href="https://biomejs.dev"><img alt="Checked with Biome" src="https://img.shields.io/badge/Checked_with-Biome-60a5fa?style=flat&logo=biome"></a>
   <a href="https://conventionalcommits.org"><img alt="Conventional Commits" src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white"></a>
