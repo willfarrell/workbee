@@ -76,7 +76,7 @@
 		"@commitlint/config-conventional": "^20.0.0",
 		"@playwright/test": "^1.27.0",
 		"esbuild": "^0.27.0",
-		"fake-indexeddb": "^4.0.0",
+		"fake-indexeddb": "^6.0.0",
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
 		"service-worker-mock": "^2.0.5",
@@ -85,11 +85,7 @@
 	},
 	"overrides": {
 		"@sveltejs/kit": {
-			"cookie": "^0.7.2",
-			"devalue": "^5.6.4"
-		},
-		"svelte": {
-			"devalue": "^5.6.4"
+			"cookie": "^0.7.2"
 		},
 		"license-check-and-add": {
 			"minimatch": "^10.2.4"
