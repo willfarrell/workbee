@@ -1,8 +1,9 @@
 *.cjs
 *.cjs.map
+!*.config.cjs
 *.mjs
 *.mjs.map
-coverage
+!*.config.mjs
 
 /test-results/
 /playwright-report/

@@ -221,7 +221,8 @@ addEventListener("fetch", (event) => {
 });
 
 addEventListener("message", (event) => {
-	if (event.origin && event.origin !== self.location.origin) return;
+	if (event.source && new URL(event.source.url).origin !== self.location.origin)
+		return;
 	const { data } = event;
 	if (!Object.hasOwn(messageEvents, data.type)) return;
 	console.log("message", data);
@@ -255,10 +256,6 @@ const periodicSyncEvents = {
 	online: offline.onlineEvent,
 };
 
-addEventListener("backgroundfetchsuccess", (event) => {
-	backgroundFetchSuccessEvent(event);
-});
+addEventListener("backgroundfetchsuccess", backgroundFetchSuccessEvent);
 
-addEventListener("backgroundfetchfail", (event) => {
-	backgroundFetchFailEvent(event);
-});
+addEventListener("backgroundfetchfail", backgroundFetchFailEvent);
