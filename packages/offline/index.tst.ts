@@ -14,6 +14,7 @@ describe("offline", () => {
 		expect(result).type.toBe<{
 			afterNetwork: AfterMiddleware;
 			postMessageEvent: () => Promise<void>;
+			destroy: () => void;
 		}>();
 	});
 

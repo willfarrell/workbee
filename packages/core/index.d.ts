@@ -46,7 +46,6 @@ export interface RouteConfig {
 	beforeNetwork: BeforeMiddleware[];
 	afterNetwork: AfterMiddleware[];
 	after: AfterMiddleware[];
-	[key: string]: any;
 }
 
 /** Top-level service worker configuration. */

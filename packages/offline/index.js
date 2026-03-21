@@ -33,7 +33,12 @@ const offlineMiddleware = ({
 	postMessage ??= postMessageToFocused;
 	methods ??= [postMethod, putMethod, patchMethod, deleteMethod];
 	objectStoreName ??= "offline";
-	redactHeaders ??= ["authorization"];
+	redactHeaders ??= [
+		"authorization",
+		"cookie",
+		"set-cookie",
+		"proxy-authorization",
+	];
 
 	// Enqueue and Retry submitted data
 	const afterNetwork = async (request, response, event, _config) => {
@@ -107,7 +112,7 @@ const offlineMiddleware = ({
 						postMessage({ type: quotaExceededEventType });
 					}
 				}
-				// TODO backoff timerer to retry add
+				// TODO backoff timer to retry add
 				// idbObjectStore.add(serialized)
 			}
 		}
