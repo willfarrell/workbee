@@ -84,9 +84,7 @@
 		"tstyche": "^6.0.0"
 	},
 	"overrides": {
-		"@sveltejs/kit": {
-			"cookie": "^0.7.2"
-		}
+		"cookie": "^1.1.1"
 	},
 	"workspaces": [
 		"packages/*",
