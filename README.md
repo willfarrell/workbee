@@ -96,11 +96,11 @@ import { backgroundFetchSuccessEvent, backgroundFetchFailEvent } from '@work-bee
 ...
 
 self.addEventListener('backgroundfetchsuccess', (event) => {
-  backgroundFetchSuccessEvent(event, config)
+  backgroundFetchSuccessEvent(event)
 })
 
 self.addEventListener('backgroundfetchfail', (event) => {
-  backgroundFetchFailEvent(event, config)
+  backgroundFetchFailEvent(event)
 })
 ```
 
