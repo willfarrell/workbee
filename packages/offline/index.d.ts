@@ -32,6 +32,7 @@ interface OfflineOptions {
 interface OfflineMiddlewareResult {
 	afterNetwork: AfterMiddleware;
 	postMessageEvent: () => Promise<void>;
+	destroy: () => void;
 }
 
 declare function offlineMiddleware(

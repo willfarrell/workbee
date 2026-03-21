@@ -77,7 +77,7 @@ const sessionMiddleware = ({
 					authnPathPattern.test(request.url)
 				) {
 					sessionToken = await authnGetToken(response.clone());
-					sessionExpiresInMiliseconds = await authnGetExpiry(
+					sessionExpiresInMilliseconds = await authnGetExpiry(
 						response.clone(),
 						sessionToken,
 					);
@@ -93,7 +93,7 @@ const sessionMiddleware = ({
 		};
 	}
 
-	let sessionExpiresInMiliseconds = 0;
+	let sessionExpiresInMilliseconds = 0;
 	let recentActivityTimestamp = 0;
 
 	let inactivityTimeout;
@@ -105,7 +105,7 @@ const sessionMiddleware = ({
 			Math.max(
 				0,
 				recentActivityTimestamp +
-					sessionExpiresInMiliseconds -
+					sessionExpiresInMilliseconds -
 					inactivityTimeoutBuffer -
 					now(),
 			),
@@ -119,7 +119,7 @@ const sessionMiddleware = ({
 			if (expiryEventType) {
 				postMessage({ type: expiryEventType });
 			}
-		}, sessionExpiresInMiliseconds);
+		}, sessionExpiresInMilliseconds);
 	};
 
 	const clearSession = () => {
@@ -136,7 +136,7 @@ const sessionMiddleware = ({
 	const expiryPromptEvent = () => {
 		if (
 			recentActivityTimestamp <
-			now() - sessionExpiresInMiliseconds + inactivityTimeoutBuffer
+			now() - sessionExpiresInMilliseconds + inactivityTimeoutBuffer
 		) {
 			if (inactivityPromptEventType) {
 				postMessage({ type: inactivityPromptEventType });
