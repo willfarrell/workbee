@@ -43,7 +43,7 @@ WorkBee is a monorepo managed with [npm workspaces](https://docs.npmjs.com/cli/u
 
 ## Making Changes
 
-1. Create a branch from `main`
+1. Create a branch from `develop`
 2. Make your changes
 3. Ensure tests pass: `npm test`
 4. Commit using [Conventional Commits](https://www.conventionalcommits.org/) format

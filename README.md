@@ -31,6 +31,20 @@
 - Zero (0) dependencies
 - GDPR Compliant
 
+## Browser Support
+
+WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) and [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) support.
+
+| Browser | Minimum Version |
+|---------|----------------|
+| Chrome  | 57+            |
+| Edge    | 17+            |
+| Firefox | 58+            |
+| Safari  | 15.4+          |
+| Opera   | 44+            |
+
+The `@work-bee/offline` package additionally requires [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (supported in all browsers listed above).
+
 ## Getting Started
 
 ### Install

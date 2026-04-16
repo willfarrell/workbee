@@ -1,7 +1,7 @@
 {
 	"name": "@work-bee/monorepo",
 	"version": "0.1.4",
-	"description": "",
+	"description": "A tiny, modular ServiceWorker library for secure web applications",
 	"private": true,
 	"type": "module",
 	"engines": {
