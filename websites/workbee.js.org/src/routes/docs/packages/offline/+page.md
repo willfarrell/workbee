@@ -77,7 +77,10 @@ import { idbSerializeRequest, idbDeserializeRequest } from "@work-bee/offline";
 ```js
 import initOfflineClient from "@work-bee/offline/client.js";
 
-initOfflineClient();
+const cleanup = initOfflineClient();
+
+// Call cleanup() to remove the event listener when no longer needed
+// cleanup();
 ```
 
-This listens for the browser's `online` event and posts `{ type: "online" }` to the ServiceWorker when connectivity returns.
+This listens for the browser's `online` event and posts `{ type: "online" }` to the ServiceWorker when connectivity returns. The returned function removes the listener.

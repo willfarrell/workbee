@@ -22,14 +22,14 @@ export const newRequest = (url, options) => new Request(url, options);
 export const addHeaderToRequest = (request, key, value) => {
 	const headers = new Headers(headersGetAll(request.headers));
 	headers.set(key, value);
-	return newRequest(request.url, { ...request, headers });
+	return new Request(request, { headers });
 };
 
 export const isResponse = (response) => response instanceof Response;
-export const newResponse = ({ status, url, body }, headersObj) => {
+export const newResponse = ({ status, statusText, url, body }, headersObj) => {
 	const headers = headersGetAll(headersObj);
 	headers.date ??= new Date().toString();
-	const response = new Response(body, { status, headers });
+	const response = new Response(body, { status, statusText, headers });
 	Object.defineProperty(response, "url", { value: url });
 	return response;
 };

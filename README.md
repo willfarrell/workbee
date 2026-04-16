@@ -252,7 +252,7 @@ const config = compileConfig({
         cacheName: 'strategyPartition',
         makeRequests: () => []
       })),
-      cacheMaxAgeInSeconds: -1
+      cacheControlMaxAge: -1
     },
     ...
   ]
@@ -262,8 +262,8 @@ addEventListener('install', (event) => {
   eventInstall(event, config)
 })
 
-addEventListener('activate', async (event) => {
-  await eventActivate(event, config)
+addEventListener('activate', (event) => {
+  eventActivate(event, config)
 })
 
 addEventListener('fetch', (event) => {
@@ -299,7 +299,7 @@ Choose strategy based on if Save-Data is enabled.
 
 ### Session Management
 
-See [@work-bee/session](/packages/session) for authentication token management, session expiry, and inactivity detection.
+See [@work-bee/session](https://workbee.js.org/docs/packages/session) for authentication token management, session expiry, and inactivity detection.
 
 ### Offline Request Enqueue
 

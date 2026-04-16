@@ -11,14 +11,17 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
+			"import": "./index.js",
 			"default": "./index.js"
 		},
 		"./client": {
 			"types": "./client.d.ts",
+			"import": "./client.js",
 			"default": "./client.js"
 		}
 	},
 	"types": "index.d.ts",
+	"sideEffects": false,
 	"files": [
 		"index.js",
 		"index.d.ts",
@@ -32,6 +35,9 @@
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/workbee.git",
 		"directory": "packages/inactivity"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/workbee/issues"
 	},
 	"homepage": "https://workbee.js.org/docs/packages/inactivity",
 	"dependencies": {

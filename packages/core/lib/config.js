@@ -146,5 +146,6 @@ const pick = (originalObject = {}, keysToPick = []) => {
 
 const flattenMiddleware = (type, routeConfig) =>
 	(routeConfig.middlewares ?? [])
+		.filter(Boolean)
 		.map((middleware) => middleware[type])
-		.filter((middleware) => middleware);
+		.filter(Boolean);

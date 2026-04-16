@@ -2,6 +2,10 @@
 
 Thank you for your interest in contributing to WorkBee!
 
+## Prerequisites
+
+- **Node.js >= 24** is required (see `engines` in package.json)
+
 ## Development Setup
 
 1. Clone the repository:
@@ -61,6 +65,14 @@ This project uses [Biome](https://biomejs.dev/) for formatting and linting. Run:
 
 ```bash
 npx biome check .
+```
+
+## Developer Certificate of Origin (DCO)
+
+This project requires a [DCO sign-off](https://developercertificate.org/) on all commits. Add `-s` to your commit command:
+
+```bash
+git commit -s -m "feat: add new feature"
 ```
 
 ## License

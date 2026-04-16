@@ -15,6 +15,7 @@
 <Main id="main" class="container-error">
     <Div>
         <H1>{page.status}</H1>
+        <P>{message}</P>
         {#if page.status === 500}
             <P>
                 {import.meta.env.AWS_REQUEST_ID ??

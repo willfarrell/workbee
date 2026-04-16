@@ -9,7 +9,7 @@ description: Architecture and core concepts of WorkBee.
 
 When a ServiceWorker intercepts a fetch event, WorkBee processes it through this pipeline:
 
-1. **Route matching** — `fetchEvent` finds the first route where `pathPattern` matches the request URL and `methods` includes the request method.
+1. **Route matching** — `eventFetch` finds the first route where `pathPattern` matches the request URL and `methods` includes the request method.
 2. **Middleware `before`** — Each middleware's `before` hook runs in order, receiving and potentially modifying the request.
 3. **Middleware `beforeNetwork`** — Each middleware's `beforeNetwork` hook runs before the strategy makes a network request.
 4. **Strategy execution** — The configured strategy (e.g. `strategyCacheFirst`) handles the actual fetch/cache logic.

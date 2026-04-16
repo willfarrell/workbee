@@ -73,7 +73,7 @@ export interface ActivateConfig {
 
 /** Options for partition strategies. */
 export interface PartitionOptions {
-	routes?: PartitionRouteConfig[];
+	routes: PartitionRouteConfig[];
 	makeRequest?: (
 		request: Request,
 		config: RouteConfig,
@@ -117,7 +117,7 @@ export function cacheExpired(
 export function cacheDeleteExpired(cacheKey: string): Promise<void>;
 
 /** Deletes expired entries from all caches. */
-export function cachesDeleteExpired(): Promise<undefined[]>;
+export function cachesDeleteExpired(): Promise<PromiseSettledResult<void>[]>;
 
 /** Deletes all caches except those in the exclude list. */
 export function cachesDelete(exclude?: string[]): Promise<boolean[]>;
@@ -179,7 +179,7 @@ export function fetchStrategy(
 	request: Request,
 	event: ExtendableEvent,
 	config: RouteConfig,
-): Promise<Response>;
+): Promise<Response | Error>;
 
 /** Handles the periodic background sync event. */
 export function periodicSyncEvent(event: Event): void;

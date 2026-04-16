@@ -54,7 +54,7 @@ const sessionMiddleware = ({
 
 	if (authzPathPattern) {
 		before = (request, _event, _config) => {
-			if (authzPathPattern.test(request.url)) {
+			if (sessionToken && authzPathPattern.test(request.url)) {
 				request = authzSetToken(request, sessionToken);
 			}
 			return request;
@@ -150,6 +150,7 @@ const sessionMiddleware = ({
 	const activityEvent = () => {
 		recentActivityTimestamp = now();
 	};
+	// Seed initial timestamp so inactivity timer has a baseline
 	activityEvent();
 
 	const destroy = () => {
@@ -166,22 +167,24 @@ export const getTokenAuthorization = (response) => {
 	return response.headers.get(authorizationHeader)?.split(" ")[1];
 };
 
+// Parsing-only: extracts expiry from an unverified JWT payload.
+// Does NOT validate the token signature. Use a server-side library for validation.
 export const getExpiryJWT = (_response, token) => {
 	try {
-		return (
-			new Date(JSON.parse(atob(token.split(".")[1])).expires_at).getTime() -
-			now()
-		);
+		const ms = JSON.parse(atob(token.split(".")[1])).exp * 1000 - now();
+		return Number.isFinite(ms) ? ms : 0;
 	} catch {
 		return 0;
 	}
 };
 
+// Parsing-only: extracts expiry from an unverified PASETO footer.
+// Does NOT validate the token signature. Use a server-side library for validation.
 export const getExpiryPaseto = (_response, token) => {
 	try {
-		return (
-			new Date(JSON.parse(atob(token.split(".")[2])).exp).getTime() - now()
-		);
+		const ms =
+			new Date(JSON.parse(atob(token.split(".")[2])).exp).getTime() - now();
+		return Number.isFinite(ms) ? ms : 0;
 	} catch {
 		return 0;
 	}

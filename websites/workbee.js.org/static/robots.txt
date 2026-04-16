@@ -1,4 +1,4 @@
-sitemap: https://datastream.js.org/sitemap.xml
+sitemap: https://workbee.js.org/sitemap.xml
 
 User-agent: *
 Disallow:

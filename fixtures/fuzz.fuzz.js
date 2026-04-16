@@ -443,7 +443,7 @@ test("fuzz: getExpiryJWT returns finite number for valid JWT", () => {
 			(expiresAt) => {
 				const header = btoa(JSON.stringify({ alg: "HS256" }));
 				const payload = btoa(
-					JSON.stringify({ expires_at: expiresAt.toISOString() }),
+					JSON.stringify({ exp: Math.floor(expiresAt.getTime() / 1000) }),
 				);
 				const token = `${header}.${payload}.signature`;
 				const response = new Response("");

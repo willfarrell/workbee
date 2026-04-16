@@ -3,6 +3,7 @@
 /* global ReadableStream */
 
 import { cacheExpired, cachePut, openCaches } from "./cache.js";
+import { consoleError } from "./console.js";
 import { fetchInlineStrategy } from "./events.js";
 import {
 	addHeaderToResponse,
@@ -84,12 +85,16 @@ export const strategyCacheFirst = async (request, event, config) => {
 	return response;
 };
 
+// Note: concurrent requests to the same stale URL will each trigger an
+// independent background revalidation. This is a deliberate simplicity
+// trade-off — deduplication would add complexity with minimal benefit since
+// the cache is updated idempotently.
 export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	let response = await strategyCacheOnly(request, event, config);
 	if (cacheExpired(response)) {
 		// cache expired, update in background
 		event.waitUntil(
-			strategyNetworkFirst(request, event, config).catch(() => {}),
+			strategyNetworkFirst(request, event, config).catch(consoleError),
 		);
 	}
 	// cache undefined
@@ -143,7 +148,7 @@ export const strategyPartition = (options = {}) => {
 
 		event.waitUntil(streamDeferred);
 
-		return newResponse({ body }, headers);
+		return newResponse({ url: request.url, body }, headers);
 	};
 };
 
@@ -152,14 +157,19 @@ const streamResponses = (responses) => {
 	const streamDeferred = new Promise((resolve, reject) => {
 		body = new ReadableStream({
 			async pull(controller) {
-				if (responses.length) {
-					const response = await responses.shift();
-					headers ??= response.headers;
-					const body = await response.arrayBuffer();
-					controller.enqueue(new Uint8Array(body));
-				} else {
-					controller.close();
-					resolve();
+				try {
+					if (responses.length) {
+						const response = await responses.shift();
+						headers ??= response.headers;
+						const body = await response.arrayBuffer();
+						controller.enqueue(new Uint8Array(body));
+					} else {
+						controller.close();
+						resolve();
+					}
+				} catch (e) {
+					controller.error(e);
+					reject(e);
 				}
 			},
 			cancel() {

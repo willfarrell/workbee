@@ -397,6 +397,33 @@ test("cache", async (t) => {
 	);
 
 	await t.test(
+		"cachesDelete: should remove deleted keys from openCaches",
+		async () => {
+			const { cachesDelete, openCaches } = await import("../index.js");
+
+			// Seed openCaches with entries
+			openCaches["sw-keep"] = { fake: true };
+			openCaches["sw-remove"] = { fake: true };
+
+			const originalKeys = globalThis.caches.keys;
+			const originalDelete = globalThis.caches.delete;
+			globalThis.caches.keys = () => Promise.resolve(["sw-keep", "sw-remove"]);
+			globalThis.caches.delete = mock.fn(() => Promise.resolve(true));
+
+			await cachesDelete(["sw-keep"]);
+
+			// sw-remove should be gone from openCaches
+			equal(openCaches["sw-remove"], undefined);
+			// sw-keep should still be there
+			equal(openCaches["sw-keep"]?.fake, true);
+
+			delete openCaches["sw-keep"];
+			globalThis.caches.keys = originalKeys;
+			globalThis.caches.delete = originalDelete;
+		},
+	);
+
+	await t.test(
 		"cachesDelete: should delete all caches when no exclude",
 		async () => {
 			const { cachesDelete } = await import("../index.js");

@@ -83,7 +83,9 @@
 		"tinybench": "^6.0.0",
 		"tstyche": "^7.0.0"
 	},
-	"overrides": {},
+	"overrides": {
+		"mathjs": "15.2.0"
+	},
 	"workspaces": [
 		"packages/*",
 		"websites/*",

@@ -424,32 +424,64 @@ test("offlineMiddleware: idbOpenRequest.onerror should call consoleError", async
 		},
 	};
 
-	const { destroy } = offlineMiddleware({ pollDelay: 0 });
+	const { afterNetwork, destroy } = offlineMiddleware({ pollDelay: 0 });
 	// Wait for the onerror to fire
 	await new Promise((resolve) => setTimeout(resolve, 50));
+
+	// Verify that enqueue rejects with the DB error
+	const request = new Request(`${domain}/503`, {
+		method: "POST",
+		body: "data",
+	});
+	const response = new Response("", { status: 503 });
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(request, response, event, {});
+	let caught = false;
+	try {
+		await Promise.all(waitUntils);
+	} catch {
+		caught = true;
+	}
+	strictEqual(caught, true);
 
 	destroy();
 	globalThis.indexedDB = originalIndexedDB;
 });
 
-// *** idbStartTransaction error (lines 80-81) *** //
-test("offlineMiddleware: idbStartTransaction throws when idbDatabase is not initialized", async (t) => {
+// *** idbStartTransaction waits for DB to initialize *** //
+test("offlineMiddleware: enqueue waits for DB initialization and succeeds", async (t) => {
 	t.mock.method(console, "error", () => {});
-	// Create an IndexedDB that never resolves onsuccess
 	const originalIndexedDB = globalThis.indexedDB;
-	const fakeOpenRequest = {
-		onerror: null,
-		onupgradeneeded: null,
-		onsuccess: null,
-		result: null,
-	};
+	const realFactory = new IDBFactory();
+	const origOpen = realFactory.open.bind(realFactory);
+
+	// Delay onsuccess by 100ms to simulate slow DB initialization
 	globalThis.indexedDB = {
-		open: () => fakeOpenRequest,
+		open: (...args) => {
+			const req = origOpen(...args);
+			let realOnSuccess;
+			Object.defineProperty(req, "onsuccess", {
+				get: () => realOnSuccess,
+				set: (fn) => {
+					realOnSuccess = () => {
+						setTimeout(fn, 100);
+					};
+				},
+				configurable: true,
+			});
+			return req;
+		},
 	};
 
-	const { afterNetwork, destroy } = offlineMiddleware({ pollDelay: 0 });
-	// idbDatabase remains null because onsuccess was never called
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, destroy } = offlineMiddleware({
+		pollDelay: 0,
+		enqueueEventType: "enqueue",
+		postMessage: postMessageSpy,
+	});
 
+	// Call afterNetwork immediately — before DB is ready
 	const request = new Request(`${domain}/503`, {
 		method: "POST",
 		body: "data",
@@ -461,12 +493,9 @@ test("offlineMiddleware: idbStartTransaction throws when idbDatabase is not init
 	const result = await afterNetwork(request, response, event, {});
 	strictEqual(result.status, 202);
 
-	// The waitUntil promise should reject because idbStartTransaction throws
-	try {
-		await Promise.all(waitUntils);
-	} catch (e) {
-		strictEqual(e.message, "IndexedDB not initialized");
-	}
+	// The enqueue should succeed after DB initializes (wait for it)
+	await Promise.all(waitUntils);
+	strictEqual(postMessageSpy.mock.callCount(), 1);
 
 	destroy();
 	globalThis.indexedDB = originalIndexedDB;
@@ -559,6 +588,45 @@ test("offlineMiddleware: idbCursor onerror should reject enqueue", async (t) => 
 
 	destroy();
 	globalThis.indexedDB = originalIndexedDB;
+});
+
+// *** postMessageEvent error handling *** //
+test("postMessageEvent: does not crash when fetch throws", async (t) => {
+	t.mock.method(console, "error", () => {});
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		statusCodes: [503],
+	});
+
+	// Enqueue a request
+	const request = new Request(`${domain}/503`, {
+		method: "POST",
+		body: JSON.stringify({ data: "test" }),
+		headers: { "Content-Type": "application/json" },
+	});
+	const response = new Response("", { status: 503 });
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(request, response, event, {});
+	await Promise.all(waitUntils);
+
+	// Override fetch to throw
+	const origFetch = globalThis.fetch;
+	globalThis.fetch = () => {
+		throw new Error("network failure");
+	};
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+
+	// postMessageEvent should not throw — it catches the error
+	await postMessageEvent();
+
+	globalThis.fetch = origFetch;
+	destroy();
 });
 
 // *** enqueue duplicate detection (line 92 - cursor?.value matches serialized) *** //

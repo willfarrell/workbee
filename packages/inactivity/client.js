@@ -15,22 +15,25 @@ const defaultActivityEvents = [
 
 export default (events = defaultActivityEvents) => {
 	let activityTimestamp = 0;
+	const handlers = [];
 	events.forEach((name) => {
-		document.addEventListener(
-			name,
-			() => {
-				//console.log(event.type)
-				const now = Date.now();
-				if (activityTimestamp + 1000 > now) {
-					return;
-				}
-				activityTimestamp = now;
+		const handler = () => {
+			const now = Date.now();
+			if (activityTimestamp + 1000 > now) {
+				return;
+			}
+			activityTimestamp = now;
 
-				navigator.serviceWorker?.controller?.postMessage({
-					type: "inactivity",
-				});
-			},
-			true,
-		);
+			navigator.serviceWorker?.controller?.postMessage({
+				type: "inactivity",
+			});
+		};
+		document.addEventListener(name, handler, true);
+		handlers.push({ name, handler });
 	});
+	return () => {
+		for (const { name, handler } of handlers) {
+			document.removeEventListener(name, handler, true);
+		}
+	};
 };

@@ -73,11 +73,11 @@ describe("types", () => {
 
 	test("strategyHTMLPartition returns Strategy", () => {
 		expect(strategyHTMLPartition()).type.toBe<Strategy>();
-		expect(strategyHTMLPartition({})).type.toBe<Strategy>();
+		expect(strategyHTMLPartition({ routes: [] })).type.toBe<Strategy>();
 	});
 
 	test("strategyPartition returns Strategy", () => {
-		expect(strategyPartition()).type.toBe<Strategy>();
+		expect(strategyPartition({ routes: [] })).type.toBe<Strategy>();
 	});
 });
 
@@ -110,8 +110,10 @@ describe("lib/cache", () => {
 		expect(cacheDeleteExpired("key")).type.toBe<Promise<void>>();
 	});
 
-	test("cachesDeleteExpired returns Promise<undefined[]>", () => {
-		expect(cachesDeleteExpired()).type.toBe<Promise<undefined[]>>();
+	test("cachesDeleteExpired returns Promise<PromiseSettledResult<void>[]>", () => {
+		expect(cachesDeleteExpired()).type.toBe<
+			Promise<PromiseSettledResult<void>[]>
+		>();
 	});
 
 	test("cachesDelete returns Promise<boolean[]>", () => {
@@ -177,10 +179,10 @@ describe("lib/events", () => {
 		).type.toBe<Promise<Response>>();
 	});
 
-	test("fetchStrategy returns Promise<Response>", () => {
+	test("fetchStrategy returns Promise<Response | Error>", () => {
 		expect(
 			fetchStrategy({} as Request, {} as ExtendableEvent, {} as RouteConfig),
-		).type.toBe<Promise<Response>>();
+		).type.toBe<Promise<Response | Error>>();
 	});
 });
 

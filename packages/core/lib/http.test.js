@@ -143,6 +143,32 @@ test("http", async (t) => {
 		equal(result.url, "http://localhost:8080/test");
 	});
 
+	await t.test(
+		"addHeaderToRequest: should preserve method on non-GET requests",
+		async () => {
+			const request = new Request("http://localhost:8080/test", {
+				method: "POST",
+				body: "test-body",
+			});
+			const result = addHeaderToRequest(request, "Authorization", "Bearer tok");
+			equal(result.method, "POST");
+			equal(result.headers.get("Authorization"), "Bearer tok");
+			equal(await result.text(), "test-body");
+		},
+	);
+
+	await t.test(
+		"addHeaderToRequest: should preserve existing headers",
+		async () => {
+			const request = new Request("http://localhost:8080/test", {
+				headers: { "X-Existing": "keep" },
+			});
+			const result = addHeaderToRequest(request, "X-New", "added");
+			equal(result.headers.get("X-Existing"), "keep");
+			equal(result.headers.get("X-New"), "added");
+		},
+	);
+
 	// *** addHeaderToResponse *** //
 	await t.test(
 		"addHeaderToResponse: should add header to response",
@@ -158,6 +184,27 @@ test("http", async (t) => {
 		},
 	);
 
+	await t.test(
+		"addHeaderToResponse: should preserve status and body",
+		async () => {
+			const response = new Response("response-body", { status: 201 });
+			const result = addHeaderToResponse(response, "X-Custom", "value");
+			equal(result.status, 201);
+			equal(result.headers.get("X-Custom"), "value");
+			equal(await result.text(), "response-body");
+		},
+	);
+
+	await t.test("addHeaderToResponse: should preserve statusText", async () => {
+		const response = new Response("", {
+			status: 404,
+			statusText: "Not Found",
+		});
+		const result = addHeaderToResponse(response, "X-Custom", "value");
+		equal(result.status, 404);
+		equal(result.statusText, "Not Found");
+	});
+
 	// *** deleteHeaderFromResponse *** //
 	await t.test(
 		"deleteHeaderFromResponse: should remove header from response",
@@ -170,6 +217,16 @@ test("http", async (t) => {
 			equal(response.headers.get("X-Remove"), "value");
 			const result = deleteHeaderFromResponse(response, "X-Remove");
 			equal(result.headers.get("X-Remove"), null);
+		},
+	);
+
+	await t.test(
+		"deleteHeaderFromResponse: should preserve status and body",
+		async () => {
+			const response = new Response("keep-body", { status: 202 });
+			const result = deleteHeaderFromResponse(response, "X-Nothing");
+			equal(result.status, 202);
+			equal(await result.text(), "keep-body");
 		},
 	);
 
