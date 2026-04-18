@@ -63,29 +63,36 @@ const offlineMiddleware = ({
 
 	let idbDatabase, idbTransaction, idbObjectStore;
 	const idbOpenRequest = indexedDB.open("sw", 1);
-	idbOpenRequest.onerror = (e) => {
-		consoleError(e);
-	};
-	idbOpenRequest.onupgradeneeded = () => {
-		idbDatabase ??= idbOpenRequest.result;
-		idbDatabase.createObjectStore(objectStoreName, { autoIncrement: true });
-	};
-	idbOpenRequest.onsuccess = () => {
-		idbDatabase ??= idbOpenRequest.result;
-	};
+	let dbError;
+	const dbReady = new Promise((resolve, reject) => {
+		idbOpenRequest.onerror = (e) => {
+			consoleError(e);
+			dbError = e;
+			reject(e);
+		};
+		idbOpenRequest.onupgradeneeded = () => {
+			idbDatabase ??= idbOpenRequest.result;
+			idbDatabase.createObjectStore(objectStoreName, { autoIncrement: true });
+		};
+		idbOpenRequest.onsuccess = () => {
+			idbDatabase ??= idbOpenRequest.result;
+			resolve();
+		};
+	});
+	dbReady.catch(() => {});
 
-	const idbCursor = () =>
-		new Promise((resolve, reject) => {
-			idbStartTransaction();
+	const idbCursor = async () => {
+		await idbStartTransaction();
+		return new Promise((resolve, reject) => {
 			const request = idbObjectStore.openCursor();
 			request.onsuccess = (event) => resolve(event?.target?.result);
 			request.onerror = (event) => reject(event?.target?.error);
 		});
+	};
 
-	const idbStartTransaction = () => {
-		if (!idbDatabase) {
-			throw new Error("IndexedDB not initialized");
-		}
+	const idbStartTransaction = async () => {
+		if (dbError) throw dbError;
+		await dbReady;
 		idbTransaction = idbDatabase.transaction([objectStoreName], "readwrite");
 		idbObjectStore = idbTransaction.objectStore(objectStoreName);
 	};
@@ -101,7 +108,7 @@ const offlineMiddleware = ({
 			if (enqueueEventType) {
 				postMessage({ type: enqueueEventType, ...serialized });
 			}
-			idbStartTransaction();
+			await idbStartTransaction();
 			try {
 				idbObjectStore.add(serialized);
 			} catch (e) {
@@ -127,20 +134,23 @@ const offlineMiddleware = ({
 		if (!navigator.onLine) {
 			return timeout();
 		}
-		cursor = await idbCursor();
-		if (cursor) {
-			const value = cursor.value;
-			const response = await fetch(idbDeserializeRequest(value));
-			if (!statusCodes.includes(response.status)) {
-				cursor.delete();
-				if (dequeueEventType) {
-					postMessage({ type: dequeueEventType, ...value });
+		try {
+			cursor = await idbCursor();
+			if (cursor) {
+				const value = cursor.value;
+				const response = await fetch(idbDeserializeRequest(value));
+				if (!statusCodes.includes(response.status)) {
+					cursor.delete();
+					if (dequeueEventType) {
+						postMessage({ type: dequeueEventType, ...value });
+					}
+					return postMessageEvent();
 				}
-				return postMessageEvent();
-			} else {
-				timeout();
 			}
+		} catch (e) {
+			consoleError(e);
 		}
+		timeout();
 	};
 
 	const destroy = () => {
@@ -155,7 +165,13 @@ export default offlineMiddleware;
 
 // *** IndexedDB *** //
 // Protects against the browser closing for offline queues and retries
-// Storing requests in IndexedDB has risks of exposing PII
+//
+// SECURITY: Request bodies and headers are persisted to IndexedDB. If requests
+// contain PII, auth tokens, or payment data, this data will be stored on disk
+// unencrypted. Sensitive headers are redacted via `redactHeaders` option (defaults
+// to stripping Authorization), but request bodies are stored as-is. Callers
+// handling sensitive body data should implement a custom `redactBody` strategy
+// or avoid using the offline queue for those routes.
 
 export const idbSerializeRequest = async (request) => {
 	// TODO test using ...request instead

@@ -270,6 +270,17 @@ test("config", async (t) => {
 		equal(config.after.length, 0);
 	});
 
+	await t.test(
+		"compileConfig: should handle null/undefined entries in middlewares array",
+		() => {
+			const middleware = { before: () => {} };
+			const config = compileConfig({
+				middlewares: [null, middleware, undefined],
+			});
+			equal(config.before.length, 1);
+		},
+	);
+
 	await t.test("compileConfig: custom config should override defaults", () => {
 		const config = compileConfig({
 			cachePrefix: "custom-",

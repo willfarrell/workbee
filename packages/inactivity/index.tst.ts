@@ -37,11 +37,11 @@ describe("inactivity", () => {
 		});
 	});
 
-	test("inactivityClient accepts events array", () => {
-		expect(inactivityClient(["click", "keydown"])).type.toBe<void>();
+	test("inactivityClient accepts events array and returns cleanup", () => {
+		expect(inactivityClient(["click", "keydown"])).type.toBe<() => void>();
 	});
 
-	test("inactivityClient accepts no arguments", () => {
-		expect(inactivityClient()).type.toBe<void>();
+	test("inactivityClient accepts no arguments and returns cleanup", () => {
+		expect(inactivityClient()).type.toBe<() => void>();
 	});
 });

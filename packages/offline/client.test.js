@@ -55,3 +55,29 @@ test("offline client: handles missing service worker gracefully", () => {
 	onlineHandler(); // Should not throw
 	globalThis.navigator = savedNav;
 });
+
+test("offline client: returns cleanup function that removes listener", () => {
+	let addedName, addedHandler;
+	let removedName, removedHandler;
+	const cleanupWindow = {
+		addEventListener: (name, handler) => {
+			addedName = name;
+			addedHandler = handler;
+		},
+		removeEventListener: (name, handler) => {
+			removedName = name;
+			removedHandler = handler;
+		},
+	};
+	globalThis.window = cleanupWindow;
+
+	const cleanup = initClient();
+	strictEqual(typeof cleanup, "function");
+	strictEqual(addedName, "online");
+
+	cleanup();
+	strictEqual(removedName, "online");
+	strictEqual(removedHandler, addedHandler);
+
+	globalThis.window = mockWindow;
+});

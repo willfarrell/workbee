@@ -17,6 +17,7 @@ describe("session", () => {
 			afterNetwork?: AfterMiddleware;
 			after?: AfterMiddleware;
 			activityEvent: () => void;
+			destroy: () => void;
 		}>();
 	});
 

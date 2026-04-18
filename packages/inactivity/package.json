@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/inactivity",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"description": "inactivity workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -11,14 +11,17 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
+			"import": "./index.js",
 			"default": "./index.js"
 		},
 		"./client": {
 			"types": "./client.d.ts",
+			"import": "./client.js",
 			"default": "./client.js"
 		}
 	},
 	"types": "index.d.ts",
+	"sideEffects": false,
 	"files": [
 		"index.js",
 		"index.d.ts",
@@ -33,9 +36,12 @@
 		"url": "git+https://github.com/willfarrell/workbee.git",
 		"directory": "packages/inactivity"
 	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/workbee/issues"
+	},
 	"homepage": "https://workbee.js.org/docs/packages/inactivity",
 	"dependencies": {
-		"@work-bee/core": "0.1.3"
+		"@work-bee/core": "0.1.4"
 	},
 	"keywords": [
 		"workbee",

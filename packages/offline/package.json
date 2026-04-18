@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/offline",
-	"version": "0.1.3",
+	"version": "0.1.4",
 	"description": "offline workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -11,14 +11,17 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
+			"import": "./index.js",
 			"default": "./index.js"
 		},
 		"./client": {
 			"types": "./client.d.ts",
+			"import": "./client.js",
 			"default": "./client.js"
 		}
 	},
 	"types": "index.d.ts",
+	"sideEffects": false,
 	"files": [
 		"index.js",
 		"index.d.ts",
@@ -29,12 +32,15 @@
 		"test": "node --test"
 	},
 	"dependencies": {
-		"@work-bee/core": "0.1.3"
+		"@work-bee/core": "0.1.4"
 	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/workbee.git",
 		"directory": "packages/offline"
+	},
+	"bugs": {
+		"url": "https://github.com/willfarrell/workbee/issues"
 	},
 	"homepage": "https://workbee.js.org/docs/packages/offline",
 	"keywords": [

@@ -88,15 +88,15 @@ const config = compileConfig({
 });
 ```
 
-### installEvent(event, config)
+### eventInstall(event, config)
 
 Handles the ServiceWorker `install` event. Pre-caches resources if configured.
 
-### activateEvent(event, config)
+### eventActivate(event, config)
 
 Handles the `activate` event. Cleans up old caches.
 
-### fetchEvent(event, config)
+### eventFetch(event, config)
 
 Handles the `fetch` event. Routes requests to the appropriate strategy.
 

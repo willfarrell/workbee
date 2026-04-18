@@ -31,6 +31,20 @@
 - Zero (0) dependencies
 - GDPR Compliant
 
+## Browser Support
+
+WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) and [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) support.
+
+| Browser | Minimum Version |
+|---------|----------------|
+| Chrome  | 57+            |
+| Edge    | 17+            |
+| Firefox | 58+            |
+| Safari  | 15.4+          |
+| Opera   | 44+            |
+
+The `@work-bee/offline` package additionally requires [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (supported in all browsers listed above).
+
 ## Getting Started
 
 ### Install
@@ -96,11 +110,11 @@ import { backgroundFetchSuccessEvent, backgroundFetchFailEvent } from '@work-bee
 ...
 
 self.addEventListener('backgroundfetchsuccess', (event) => {
-  backgroundFetchSuccessEvent(event, config)
+  backgroundFetchSuccessEvent(event)
 })
 
 self.addEventListener('backgroundfetchfail', (event) => {
-  backgroundFetchFailEvent(event, config)
+  backgroundFetchFailEvent(event)
 })
 ```
 
@@ -252,7 +266,7 @@ const config = compileConfig({
         cacheName: 'strategyPartition',
         makeRequests: () => []
       })),
-      cacheMaxAgeInSeconds: -1
+      cacheControlMaxAge: -1
     },
     ...
   ]
@@ -262,8 +276,8 @@ addEventListener('install', (event) => {
   eventInstall(event, config)
 })
 
-addEventListener('activate', async (event) => {
-  await eventActivate(event, config)
+addEventListener('activate', (event) => {
+  eventActivate(event, config)
 })
 
 addEventListener('fetch', (event) => {
@@ -299,7 +313,7 @@ Choose strategy based on if Save-Data is enabled.
 
 ### Session Management
 
-See [@work-bee/session](/packages/session) for authentication token management, session expiry, and inactivity detection.
+See [@work-bee/session](https://workbee.js.org/docs/packages/session) for authentication token management, session expiry, and inactivity detection.
 
 ### Offline Request Enqueue
 

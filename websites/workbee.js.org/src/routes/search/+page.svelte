@@ -1,6 +1,16 @@
 <script>
+import Card from "@design-system/components/Card.svelte";
+import H1 from "@design-system/components/Heading1.svelte";
+import H2 from "@design-system/components/Heading2.svelte";
+import LayoutCenter from "@design-system/components/LayoutCenter.svelte";
+import A from "@design-system/elements/a.svelte";
+import P from "@design-system/elements/p.svelte";
+import Section from "@design-system/elements/section.svelte";
+import Span from "@design-system/elements/span.svelte";
+import Ul from "@design-system/elements/ul.svelte";
+
 let { data } = $props();
-const _results = $derived(data.results);
+const results = $derived(data.results);
 </script>
 
 <svelte:head>

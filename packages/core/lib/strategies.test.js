@@ -792,6 +792,7 @@ test("Strategies", async (t) => {
 			await Promise.all(waitUntils);
 
 			equal(response.status, 200);
+			equal(response.url, `${domain}/200`);
 		},
 	);
 
@@ -831,6 +832,54 @@ test("Strategies", async (t) => {
 			// Cancel the stream to trigger the cancel() callback (line 164)
 			await response.body.cancel();
 			await Promise.all(waitUntils);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: Should reject streamDeferred when sub-response fails",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			// Create a partition where the route strategy fails
+			const failingStrategy = () => {
+				throw new Error("sub-response failed");
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "$1/fail" }],
+						strategy: failingStrategy,
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			// Read stream — should error because sub-response has no arrayBuffer()
+			let streamCaught = false;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch {
+				streamCaught = true;
+			}
+			equal(streamCaught, true);
+			// streamDeferred should also reject
+			let deferredCaught = false;
+			try {
+				await Promise.all(waitUntils);
+			} catch {
+				deferredCaught = true;
+			}
+			equal(deferredCaught, true);
 		},
 	);
 

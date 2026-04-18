@@ -49,9 +49,9 @@ test("setTokenAuthorization: Should add Bearer token to request Authorization he
 
 // --- getExpiryJWT ---
 test("getExpiryJWT: Should extract expiry from JWT payload", async (_t) => {
-	const expiresAt = new Date(Date.now() + 3600 * 1000).toISOString();
+	const exp = Math.floor(Date.now() / 1000) + 3600;
 	const header = btoa(JSON.stringify({ alg: "HS256" }));
-	const payload = btoa(JSON.stringify({ expires_at: expiresAt }));
+	const payload = btoa(JSON.stringify({ exp }));
 	const signature = "fake-signature";
 	const token = `${header}.${payload}.${signature}`;
 	const response = new Response("");
@@ -72,6 +72,26 @@ test("getExpiryJWT: Should return 0 for malformed JSON in payload", async (_t) =
 	const response = new Response("");
 	const result = getExpiryJWT(response, "header.notbase64.signature");
 	strictEqual(result, 0);
+});
+
+test("getExpiryJWT: Should return 0 when exp claim is missing", async (_t) => {
+	const header = btoa(JSON.stringify({ alg: "HS256" }));
+	const payload = btoa(JSON.stringify({ sub: "user" })); // no exp
+	const token = `${header}.${payload}.signature`;
+	const response = new Response("");
+	const result = getExpiryJWT(response, token);
+	strictEqual(result, 0);
+	strictEqual(Number.isNaN(result), false);
+});
+
+test("getExpiryJWT: Should return 0 when exp is not a number", async (_t) => {
+	const header = btoa(JSON.stringify({ alg: "HS256" }));
+	const payload = btoa(JSON.stringify({ exp: "not-a-number" }));
+	const token = `${header}.${payload}.signature`;
+	const response = new Response("");
+	const result = getExpiryJWT(response, token);
+	strictEqual(result, 0);
+	strictEqual(Number.isNaN(result), false);
 });
 
 // --- getExpiryPaseto ---
@@ -99,6 +119,15 @@ test("getExpiryPaseto: Should return 0 for malformed JSON in footer", async (_t)
 	const response = new Response("");
 	const result = getExpiryPaseto(response, "v4.public.notbase64");
 	strictEqual(result, 0);
+});
+
+test("getExpiryPaseto: Should return 0 when exp is invalid date", async (_t) => {
+	const footer = btoa(JSON.stringify({ exp: "not-a-date" }));
+	const token = `v4.public.${footer}`;
+	const response = new Response("");
+	const result = getExpiryPaseto(response, token);
+	strictEqual(result, 0);
+	strictEqual(Number.isNaN(result), false);
 });
 
 // --- sessionMiddleware with authzPathPattern ---
@@ -162,7 +191,7 @@ test("sessionMiddleware: before should skip non-matching requests", async (_t) =
 	session.destroy();
 });
 
-test("sessionMiddleware: before should set empty Bearer token when sessionToken is empty", async (_t) => {
+test("sessionMiddleware: before should not set Authorization header when sessionToken is empty", async (_t) => {
 	const session = sessionMiddleware({
 		authzPathPattern: /\/api\//,
 		postMessage: mock.fn(),
@@ -171,7 +200,7 @@ test("sessionMiddleware: before should set empty Bearer token when sessionToken 
 	// No authentication happened, sessionToken is empty
 	const apiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(apiRequest, {}, {});
-	strictEqual(result.headers.get("Authorization"), "Bearer");
+	strictEqual(result.headers.get("Authorization"), null);
 });
 
 // --- sessionMiddleware with default authnGetExpiry ---
@@ -415,10 +444,10 @@ test("sessionMiddleware: afterNetwork with logout URL should clear session", asy
 		{ cacheKey: "sw-cache-1" },
 	);
 
-	// After clearSession, before should set empty Bearer token (sessionToken is "")
+	// After clearSession, before should not set Authorization header (sessionToken is "")
 	const newApiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(newApiRequest, {}, {});
-	strictEqual(result.headers.get("Authorization"), "Bearer");
+	strictEqual(result.headers.get("Authorization"), null);
 });
 
 // --- Lines 112-115: sessionTimer fires and calls postMessage with expiryEventType ---
@@ -657,4 +686,85 @@ test("sessionMiddleware: inactivity prompt should restart timer when user has re
 	strictEqual(promptCalls.length, 0);
 
 	mock.timers.reset();
+});
+
+// --- Edge case: token with spaces ---
+test("getTokenAuthorization: Should handle token containing spaces after first space", async (_t) => {
+	const response = new Response("", {
+		headers: new Headers({
+			Authorization: "Bearer token-part1 extra-part2",
+		}),
+	});
+	// split(" ")[1] only returns the first segment after "Bearer "
+	const token = getTokenAuthorization(response);
+	strictEqual(token, "token-part1");
+});
+
+// --- Edge case: destroy mid-timer ---
+test("sessionMiddleware: destroy should safely clear all timers", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout"] });
+
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 10000,
+		expiryEventType: "session-expired",
+		inactivityPromptEventType: "inactivity-prompt",
+		postMessage: postMessageMock,
+	});
+
+	// Authenticate to start timers
+	const loginRequest = new Request(`${domain}/auth/login`, { method: "POST" });
+	const loginResponse = new Response("{}", {
+		status: 200,
+		headers: new Headers({ Authorization: "Bearer test-token" }),
+	});
+	await session.afterNetwork(
+		loginRequest,
+		loginResponse,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	// Destroy mid-timer — should not throw
+	session.destroy();
+
+	// Advance past all timeouts — no postMessage should fire
+	mock.timers.tick(20000);
+	strictEqual(postMessageMock.mock.callCount(), 0);
+
+	mock.timers.reset();
+});
+
+// --- Edge case: before returns unmodified request URL after auth ---
+test("sessionMiddleware: before should preserve request URL when adding auth", async (_t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+
+	// Authenticate
+	const loginRequest = new Request(`${domain}/auth/login`, { method: "POST" });
+	const loginResponse = new Response("{}", {
+		status: 200,
+		headers: new Headers({ Authorization: "Bearer test-token" }),
+	});
+	await session.afterNetwork(
+		loginRequest,
+		loginResponse,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	const apiRequest = new Request(`${domain}/api/data`);
+	const result = session.before(apiRequest, {}, {});
+	strictEqual(result.url, apiRequest.url);
+	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+	session.destroy();
 });

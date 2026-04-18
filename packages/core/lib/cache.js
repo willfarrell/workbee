@@ -44,9 +44,12 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
 	} else {
 		return;
 	}
-	return cachePut(cacheKey, request, response, ++retry);
+	return cachePut(cacheKey, request, response, retry + 1);
 };
 
+// Checks the Expires header only. Cache-Control max-age is converted to an
+// Expires header by strategyNetworkFirst before caching, so this covers
+// all responses that flow through the standard strategies.
 export const cacheExpired = (response) => {
 	if (!response) return;
 	const expires = response.headers.get("Expires");
@@ -72,18 +75,18 @@ export const cachesDeleteExpired = async () => {
 	for (const cacheKey of existingCacheKeys) {
 		cacheExpires.push(cacheDeleteExpired(cacheKey));
 	}
-	return Promise.all(cacheExpires);
+	return Promise.allSettled(cacheExpires);
 };
 
 export const cachesDelete = async (exclude = []) => {
-	return caches.keys().then((existingCacheKeys) => {
-		const validCacheSet = new Set([...exclude]);
-		return Promise.all(
-			existingCacheKeys
-				.filter((existingCacheKey) => {
-					return !validCacheSet.has(existingCacheKey);
-				})
-				.map(caches.delete.bind(caches)),
-		);
-	});
+	const existingCacheKeys = await caches.keys();
+	const validCacheSet = new Set(exclude);
+	const toDelete = existingCacheKeys.filter(
+		(existingCacheKey) => !validCacheSet.has(existingCacheKey),
+	);
+	const result = await Promise.all(toDelete.map(caches.delete.bind(caches)));
+	for (const key of toDelete) {
+		delete openCaches[key];
+	}
+	return result;
 };

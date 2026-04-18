@@ -231,7 +231,7 @@ addEventListener("message", (event) => {
 
 const messageEvents = {
 	cache: cacheOverrideEvent(config),
-	online: offline.onlineEvent,
+	online: offline.postMessageEvent,
 };
 
 addEventListener("sync", (event) => {
@@ -242,7 +242,7 @@ addEventListener("sync", (event) => {
 });
 
 const syncEvents = {
-	online: offline.onlineEvent,
+	online: offline.postMessageEvent,
 };
 
 addEventListener("periodicsync", (event) => {
@@ -253,7 +253,7 @@ addEventListener("periodicsync", (event) => {
 });
 
 const periodicSyncEvents = {
-	online: offline.onlineEvent,
+	online: offline.postMessageEvent,
 };
 
 addEventListener("backgroundfetchsuccess", backgroundFetchSuccessEvent);

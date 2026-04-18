@@ -23,6 +23,7 @@ interface SessionMiddlewareResult {
 	afterNetwork?: AfterMiddleware;
 	after?: AfterMiddleware;
 	activityEvent: () => void;
+	destroy: () => void;
 }
 
 declare function sessionMiddleware(

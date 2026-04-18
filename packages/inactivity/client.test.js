@@ -123,3 +123,33 @@ test("inactivity client: handles missing service worker gracefully", () => {
 
 	globalThis.navigator = savedNav;
 });
+
+test("inactivity client: returns cleanup function that removes listeners", () => {
+	const added = [];
+	const removed = [];
+	const cleanupDoc = {
+		addEventListener: (name, handler, capture) => {
+			added.push({ name, handler, capture });
+		},
+		removeEventListener: (name, handler, capture) => {
+			removed.push({ name, handler, capture });
+		},
+	};
+	globalThis.document = cleanupDoc;
+
+	const cleanup = initClient(["click", "keydown"]);
+	strictEqual(typeof cleanup, "function");
+	strictEqual(added.length, 2);
+	strictEqual(removed.length, 0);
+
+	cleanup();
+	strictEqual(removed.length, 2);
+	// Verify same handler references were removed
+	for (let i = 0; i < added.length; i++) {
+		strictEqual(removed[i].name, added[i].name);
+		strictEqual(removed[i].handler, added[i].handler);
+		strictEqual(removed[i].capture, added[i].capture);
+	}
+
+	globalThis.document = mockDocument;
+});

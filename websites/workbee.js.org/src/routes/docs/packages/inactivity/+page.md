@@ -55,10 +55,13 @@ Import and initialize the client-side script to send activity events to the Serv
 import initInactivityClient from "@work-bee/inactivity/client.js";
 
 // Use default events (keypress, mousedown, mousemove, scroll, touch, etc.)
-initInactivityClient();
+const cleanup = initInactivityClient();
 
 // Or specify custom events
-initInactivityClient(["keypress", "mousedown", "scroll"]);
+const cleanup = initInactivityClient(["keypress", "mousedown", "scroll"]);
+
+// Call cleanup() to remove all event listeners when no longer needed
+// cleanup();
 ```
 
-This listens for user interaction events and posts `{ type: "inactivity" }` messages to the ServiceWorker.
+This listens for user interaction events and posts `{ type: "inactivity" }` messages to the ServiceWorker. The returned function removes all listeners.
