@@ -36,9 +36,6 @@ test("core: exports event utilities", () => {
 	ok("findRouteConfig" in core);
 	ok("fetchInlineStrategy" in core);
 	ok("fetchStrategy" in core);
-	ok("periodicSyncEvent" in core);
-	ok("pushEvent" in core);
-	ok("notificationClickEvent" in core);
 	ok("backgroundFetchSuccessEvent" in core);
 	ok("backgroundFetchFailEvent" in core);
 });

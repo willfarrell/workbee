@@ -112,13 +112,6 @@ export const fetchStrategy = async (request, event, config) => {
 	return response;
 };
 
-// Event: Push Notifications
-export const periodicSyncEvent = (_event) => {};
-
-export const pushEvent = (_event, { init, shutdown }) => {};
-
-export const notificationClickEvent = (_event) => {};
-
 export const backgroundFetchSuccessEvent = (event) => {
 	event.waitUntil(backgroundFetchSuccessEventWaitUntil(event));
 };

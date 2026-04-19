@@ -67,6 +67,18 @@ This project uses [Biome](https://biomejs.dev/) for formatting and linting. Run:
 npx biome check .
 ```
 
+## Pre-commit hook
+
+Husky runs `npm run git:pre-commit` on every commit, which:
+
+1. `npm run test:lint` — Biome lint on staged files
+2. `npm run git:test-staged` — executes `node --test ./packages/*`
+
+The package-wide test step currently runs across every package, so a commit can
+take several seconds even when only docs change. Use `git commit --no-verify`
+only when you are certain the change is hooks-irrelevant (docs, CI-only
+changes) — CI still enforces the full suite on every PR.
+
 ## Developer Certificate of Origin (DCO)
 
 This project requires a [DCO sign-off](https://developercertificate.org/) on all commits. Add `-s` to your commit command:

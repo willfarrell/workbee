@@ -30,7 +30,9 @@ export const newResponse = ({ status, statusText, url, body }, headersObj) => {
 	const headers = headersGetAll(headersObj);
 	headers.date ??= new Date().toString();
 	const response = new Response(body, { status, statusText, headers });
-	Object.defineProperty(response, "url", { value: url });
+	if (url) {
+		Object.defineProperty(response, "url", { value: url });
+	}
 	return response;
 };
 

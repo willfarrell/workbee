@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: MIT
 /* global ReadableStream */
 
-import { cacheExpired, cachePut, openCaches } from "./cache.js";
+import { applyExpires, cacheExpired, cacheMatch, cachePut } from "./cache.js";
 import { consoleError } from "./console.js";
 import { fetchInlineStrategy } from "./events.js";
-import {
-	addHeaderToResponse,
-	isResponse,
-	newRequest,
-	newResponse,
-	urlRemoveHash,
-} from "./http.js";
+import { isResponse, newRequest, newResponse, urlRemoveHash } from "./http.js";
 
 export const strategyNetworkOnly = async (request, event, config) => {
 	for (const beforeNetwork of config.beforeNetwork) {
@@ -32,63 +26,60 @@ export const strategyNetworkOnly = async (request, event, config) => {
 	throw response;
 };
 
-export const strategyCacheOnly = async (request, event, config) => {
-	const cache = openCaches[config.cacheKey];
-	if (!cache) return;
-	return cache.match(request);
+export const strategyCacheOnly = async (request, _event, config) => {
+	const response = await cacheMatch(config.cacheKey, request);
+	return response;
 };
 
-const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
-// const cacheControlStaleWhileRevalidateRegExp = /(stale-while-revalidate)=([0-9]+)/
 export const strategyNetworkFirst = async (request, event, config) => {
 	let response;
 	try {
 		response = await strategyNetworkOnly(request, event, config);
-	} catch (e) {
+		if (response.ok) {
+			response = applyExpires(response);
+			if (response.headers.get("Expires")) {
+				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+			}
+		}
+	} catch (_e) {
 		response = await strategyCacheOnly(request, event, config);
-
-		// no cache value
-		if (!response) {
-			throw e;
-		}
-		return response;
+		response ??= await strategyIgnore(request, event, config);
 	}
-	if (response.ok) {
-		// Add in Expires header to allow expiry of cache without complex logic
-		const cacheControl = response.headers.get("Cache-Control");
 
-		const match = cacheControl?.match(cacheControlMaxAgeRegExp);
-		const maxAge = match ? Number.parseInt(match[2], 10) : 0;
+	return response;
+};
 
-		if (maxAge) {
-			const responseTime = new Date(response.headers.get("Date")).getTime();
-			response = addHeaderToResponse(
-				response,
-				"Expires",
-				new Date(responseTime + maxAge * 1000).toString(),
-			);
-
-			event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+export const strategyStaleIfError = async (request, event, config) => {
+	let response;
+	try {
+		response = await strategyNetworkOnly(request, event, config);
+		if (response.ok) {
+			response = applyExpires(response);
+			if (response.headers.get("Expires")) {
+				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+			}
 		}
+	} catch (e) {
+		if (500 <= e.status && e.status <= 599) {
+			response = await strategyCacheOnly(request, event, config);
+		}
+		response ??= await strategyIgnore(request, event, config);
 	}
+
 	return response;
 };
 
 export const strategyCacheFirst = async (request, event, config) => {
 	let response = await strategyCacheOnly(request, event, config);
 	if (cacheExpired(response)) {
-		// cache expired - spoof undefined to preserve cache in case of network failure
+		// Fall through to network. If the network fails, strategyNetworkFirst
+		// will fall back to the still-cached (stale) response via cacheMatch.
 		response = undefined;
 	}
-	// cache undefined
 	response ??= await strategyNetworkFirst(request, event, config);
 	return response;
 };
 
-// Note: concurrent requests to the same stale URL will each trigger an
-// independent background revalidation. This is a deliberate simplicity
-// trade-off — deduplication would add complexity with minimal benefit since
-// the cache is updated idempotently.
 export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	let response = await strategyCacheOnly(request, event, config);
 	if (cacheExpired(response)) {
@@ -97,7 +88,6 @@ export const strategyStaleWhileRevalidate = async (request, event, config) => {
 			strategyNetworkFirst(request, event, config).catch(consoleError),
 		);
 	}
-	// cache undefined
 	response ??= await strategyNetworkFirst(request, event, config);
 	return response;
 };
@@ -107,7 +97,7 @@ export const strategyIgnore = (request, event, config) => {
 };
 
 export const strategyCacheFirstIgnore = async (request, event, config) => {
-	let response = await strategyCacheOnly(request, event, config);
+	let response = await cacheMatch(config.cacheKey, request);
 	if (cacheExpired(response)) {
 		response = undefined;
 	}

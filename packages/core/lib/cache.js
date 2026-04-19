@@ -4,13 +4,45 @@
 
 import { consoleError } from "./console.js";
 import { findRouteConfig } from "./events.js";
-import { newRequest, newResponse } from "./http.js";
+import { addHeaderToResponse, newRequest, newResponse } from "./http.js";
+
+export const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
+export const cacheControlStaleWhileRevalidateRegExp =
+	/(stale-while-revalidate)=([0-9]+)/;
+export const cacheControlStaleIfErrorRegExp = /(stale-if-error)=([0-9]+)/;
+
+export const applyExpires = (response) => {
+	if (response.headers.get("Expires")) return response;
+	const match = response.headers
+		.get("Cache-Control")
+		?.match(cacheControlMaxAgeRegExp);
+	const maxAge = match ? Number.parseInt(match[2], 10) : 0;
+	if (!maxAge) return response;
+	const responseTime = new Date(response.headers.get("Date")).getTime();
+	return addHeaderToResponse(
+		response,
+		"Expires",
+		new Date(responseTime + maxAge * 1000).toString(),
+	);
+};
 
 export const openCaches = {};
 
-export const cacheOverrideEvent = (config) => {
+export const cacheMatch = async (cacheKey, request) => {
+	openCaches[cacheKey] ??= await caches.open(cacheKey);
+	return openCaches[cacheKey].match(request);
+};
+
+export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 	return (messageEvent) => {
-		let { request, response } = messageEvent;
+		if (allowedOrigins) {
+			const sourceUrl = messageEvent?.source?.url;
+			if (!sourceUrl) return;
+			const origin = new URL(sourceUrl).origin;
+			if (!allowedOrigins.includes(origin)) return;
+		}
+		const data = messageEvent?.data ?? messageEvent;
+		let { request, response } = data;
 		if (typeof request === "string") {
 			request = newRequest(request);
 		}

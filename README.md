@@ -393,6 +393,33 @@ addEventListener('fetch', (event) => {
 })
 ```
 
+#### Stale if error
+
+Tries the network; on a thrown error or a 5xx response, serves any cached copy (even expired). Unlike `strategyNetworkFirst`, does not cache successful responses.
+
+```javascript
+/* eslint-env: serviceworker */
+import { strategyStaleIfError } from '@work-bee/core'
+
+const config = {
+  strategy: strategyStaleIfError
+}
+
+addEventListener('install', (event) => {
+  eventInstall(event, config)
+})
+
+addEventListener('activate', (event) => {
+  eventActivate(event, config)
+})
+
+addEventListener('fetch', (event) => {
+  eventFetch(event, config)
+})
+```
+
+The same behavior is available as the `staleIfError(request, response, config)` helper, which can be composed inside any strategy or middleware that produces a response.
+
 #### [Cache, update and refresh](https://serviceworke.rs/strategy-cache-update-and-refresh.html)
 
 Not yet implemented.

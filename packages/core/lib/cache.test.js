@@ -4,6 +4,7 @@ import { equal, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
 import "../../../fixtures/helper.js";
 import {
+	applyExpires,
 	cacheDeleteExpired,
 	cacheExpired,
 	cacheOverrideEvent,
@@ -193,6 +194,62 @@ test("cache", async (t) => {
 
 			equal(putFn.mock.callCount(), 1);
 
+			delete openCaches["sw-default"];
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should reject cross-origin MessageEvent",
+		async () => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+
+			const config = (await import("../index.js")).compileConfig({
+				middlewares: [],
+				routes: [],
+			});
+
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+
+			await handler({
+				source: { url: "https://evil.example.com/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "attacker-payload",
+				},
+			});
+
+			equal(putFn.mock.callCount(), 0);
+			delete openCaches["sw-default"];
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should accept same-origin MessageEvent",
+		async () => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+
+			const config = (await import("../index.js")).compileConfig({
+				middlewares: [],
+				routes: [],
+			});
+
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "trusted",
+				},
+			});
+
+			equal(putFn.mock.callCount(), 1);
 			delete openCaches["sw-default"];
 		},
 	);
@@ -443,6 +500,26 @@ test("cache", async (t) => {
 
 			globalThis.caches.keys = originalKeys;
 			globalThis.caches.delete = originalDelete;
+		},
+	);
+
+	// *** applyExpires *** //
+	await t.test(
+		"applyExpires: should add Expires header from Cache-Control max-age",
+		async () => {
+			const date = new Date().toString();
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=60",
+					Date: date,
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			const expiresDate = new Date(result.headers.get("Expires")).getTime();
+			const expected = new Date(date).getTime() + 60 * 1000;
+			equal(expiresDate, expected);
 		},
 	);
 });

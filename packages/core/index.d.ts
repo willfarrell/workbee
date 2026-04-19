@@ -92,13 +92,35 @@ export interface PartitionRouteConfig {
 /** Mutable object tracking opened caches. */
 export const openCaches: Record<string, Cache>;
 
-/** Returns a handler that overrides cached responses via postMessage events. */
+/**
+ * Returns `response` with an Expires header computed from Cache-Control
+ * max-age (or s-maxage). If neither is present, or if Expires is already set,
+ * returns the response unchanged.
+ */
+export function applyExpires(response: Response): Response;
+
+/** Resolves a Response from the named cache, opening it lazily if needed. */
+export function cacheMatch(
+	cacheKey: string,
+	request: Request,
+): Promise<Response | undefined>;
+
+/**
+ * Returns a handler that overrides cached responses via postMessage events.
+ * Pass `allowedOrigins` to have the handler reject cross-origin MessageEvents
+ * before touching the cache; otherwise the caller must perform the check.
+ */
 export function cacheOverrideEvent(
 	config: WorkBeeConfig,
-): (messageEvent: {
-	request: string | Request;
-	response: string | Response;
-}) => Promise<void>;
+	options?: { allowedOrigins?: string[] },
+): (
+	messageEvent:
+		| { request: string | Request; response: string | Response }
+		| {
+				source?: { url?: string } | null;
+				data: { request: string | Request; response: string | Response };
+		  },
+) => Promise<void>;
 
 /** Puts a response into the named cache, retrying on quota errors. */
 export function cachePut(
@@ -181,18 +203,6 @@ export function fetchStrategy(
 	config: RouteConfig,
 ): Promise<Response | Error>;
 
-/** Handles the periodic background sync event. */
-export function periodicSyncEvent(event: Event): void;
-
-/** Handles push notification events. */
-export function pushEvent(
-	event: Event,
-	options: { init: () => void; shutdown: () => void },
-): void;
-
-/** Handles notification click events. */
-export function notificationClickEvent(event: Event): void;
-
 /** Handles successful background fetch events. */
 export function backgroundFetchSuccessEvent(event: Event): void;
 
@@ -228,9 +238,14 @@ export function addHeaderToRequest(
 /** Type guard that checks if a value is a Response instance. */
 export function isResponse(value: unknown): value is Response;
 
-/** Creates a new Response with optional status, url, body, and headers. */
+/** Creates a new Response with optional status, statusText, url, body, and headers. */
 export function newResponse(
-	options: { status?: number; url?: string; body?: BodyInit | null },
+	options: {
+		status?: number;
+		statusText?: string;
+		url?: string;
+		body?: BodyInit | null;
+	},
 	headersObj?: Headers | Record<string, string>,
 ): Response;
 
@@ -266,6 +281,24 @@ export function postMessageToAll(message: any): Promise<void>;
 export function postMessageToFocused(message: any): Promise<void>;
 
 // --- lib/strategies.js ---
+
+/**
+ * Given a response (or thrown error) from a network fetch, returns any cached
+ * copy (even expired) when the response is a failure (5xx or thrown error);
+ * otherwise passes the response through. Rethrows when there is no fallback.
+ */
+export function staleIfError(
+	request: Request,
+	response: Response | Error,
+	config: RouteConfig,
+): Promise<Response>;
+
+/**
+ * Stale-if-error strategy: tries the network; on failure (thrown error or
+ * 5xx) falls back to any cached copy (even expired). Unlike networkFirst,
+ * does not cache successful responses.
+ */
+export const strategyStaleIfError: Strategy;
 
 /** Network-only strategy: always fetches from the network. */
 export const strategyNetworkOnly: Strategy;

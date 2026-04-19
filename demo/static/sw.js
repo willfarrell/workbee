@@ -46,6 +46,7 @@ import {
 	strategyNetworkOnly,
 	// strategyLocalDownload,
 	strategyPartition,
+	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
 	strategyStatic,
 } from "../../packages/core/index.js";
@@ -94,6 +95,11 @@ const config = compileConfig({
 		{
 			pathPattern: pathPattern("strategyStaleWhileRevalidate$"),
 			strategy: strategyStaleWhileRevalidate,
+		},
+		{
+			pathPattern: pathPattern("strategyStaleIfError$"),
+			cacheName: "strategyStaleIfError",
+			strategy: strategyStaleIfError,
 		},
 		{
 			pathPattern: pathPattern("strategyIgnore$"),

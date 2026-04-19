@@ -134,6 +134,24 @@ test("http", async (t) => {
 		},
 	);
 
+	await t.test(
+		"newResponse: should leave default url when url is not provided",
+		async () => {
+			const response = newResponse({ status: 200, body: "" });
+			// Response.url defaults to "" per spec; must not be replaced with undefined
+			strictEqual(response.url, "");
+		},
+	);
+
+	await t.test("newResponse: should preserve statusText", async () => {
+		const response = newResponse({
+			status: 404,
+			statusText: "Not Found",
+			body: "",
+		});
+		equal(response.statusText, "Not Found");
+	});
+
 	// *** addHeaderToRequest *** //
 	await t.test("addHeaderToRequest: should add header to request", async () => {
 		const request = new Request("http://localhost:8080/test");

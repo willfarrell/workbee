@@ -400,6 +400,90 @@ test("postMessageEvent: dequeues request and calls postMessage with dequeueEvent
 	destroy();
 });
 
+// *** multi-item queue drains in order *** //
+test("postMessageEvent: drains multiple queued requests one at a time", async () => {
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		statusCodes: [503],
+	});
+
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	for (const path of ["/200", "/en/200"]) {
+		const request = new Request(`${domain}${path}`, {
+			method: "POST",
+			body: JSON.stringify({ p: path }),
+			headers: { "Content-Type": "application/json" },
+		});
+		await afterNetwork(request, undefined, event, {});
+	}
+	await Promise.all(waitUntils);
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+
+	const fetchCalls = [];
+	const origFetch = globalThis.fetch;
+	globalThis.fetch = (req) => {
+		fetchCalls.push(req.url);
+		return origFetch(req);
+	};
+
+	// Each postMessageEvent drains at most one; call until quiescent.
+	await postMessageEvent();
+	await postMessageEvent();
+	await postMessageEvent();
+
+	strictEqual(fetchCalls.length, 2);
+	globalThis.fetch = origFetch;
+	destroy();
+});
+
+// *** queue empties after successful dequeue *** //
+test("postMessageEvent: queue is empty after successful dequeue", async () => {
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		dequeueEventType: "dequeue",
+		postMessage: postMessageSpy,
+		statusCodes: [503],
+	});
+
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		body: JSON.stringify({ data: "once" }),
+		headers: { "Content-Type": "application/json" },
+	});
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(request, undefined, event, {});
+	await Promise.all(waitUntils);
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+
+	const fetchCalls = [];
+	const origFetch = globalThis.fetch;
+	globalThis.fetch = (req) => {
+		fetchCalls.push(req.url);
+		return origFetch(req);
+	};
+
+	await postMessageEvent();
+	// Second call should find the queue empty → no more fetches
+	await postMessageEvent();
+
+	strictEqual(fetchCalls.length, 1);
+	globalThis.fetch = origFetch;
+	destroy();
+});
+
 // *** idbOpenRequest.onerror (line 60) *** //
 test("offlineMiddleware: idbOpenRequest.onerror should call consoleError", async (t) => {
 	t.mock.method(console, "error", () => {});

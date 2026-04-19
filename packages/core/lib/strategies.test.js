@@ -10,6 +10,7 @@ import {
 	fetchStrategy,
 	openCaches,
 	pathPattern,
+	staleIfError,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
 	strategyCacheOnly,
@@ -17,6 +18,7 @@ import {
 	strategyIgnore,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
+	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
 } from "../index.js";
 
@@ -104,26 +106,7 @@ test("Strategies", async (t) => {
 
 	// *** strategyCacheOnly *** //
 	await t.test(
-		"strategyCacheOnly: Should return undefined when cache is not open",
-		async (_t) => {
-			const event = {
-				__request: new Request(`${domain}/200`, {
-					method: "GET",
-				}),
-			};
-
-			const { config } = setupMocks(strategyCacheOnly);
-			// Remove the cache so openCaches[cacheKey] is undefined
-			delete openCaches[config.cacheKey];
-
-			const response = await strategyCacheOnly(event.__request, event, config);
-
-			equal(response, undefined);
-		},
-	);
-
-	await t.test(
-		"strategyCacheOnly: Should resolve undefined from cache when not found",
+		"strategyCacheOnly: Should resolve 504 from cache when not found",
 		async (_t) => {
 			const event = {
 				__request: new Request(`${domain}/200`, {
@@ -150,7 +133,7 @@ test("Strategies", async (t) => {
 			equal(cache.delete.callCount, 0);
 			equal(middleware.after.callCount, 1);
 
-			equal(response, undefined);
+			equal(response?.status, 504);
 		},
 	);
 
@@ -183,6 +166,42 @@ test("Strategies", async (t) => {
 
 			equal(response.status, 200);
 			equal(await response.text(), "{}");
+		},
+	);
+
+	await t.test(
+		"strategyCacheOnly: Should resolve 504 from cache when not found",
+		async (_t) => {
+			const request = new Request(`${domain}/cache-miss-${Date.now()}`, {
+				method: "GET",
+			});
+			const { config } = setupMocks(strategyCacheOnly, null);
+
+			const response = await strategyCacheOnly(request, {}, config);
+
+			equal(response?.status, 504);
+		},
+	);
+
+	await t.test(
+		"strategyCacheOnly: Should find cached response after SW restart (openCaches empty)",
+		async (_t) => {
+			// Simulate a prior SW lifetime that populated the Cache Storage
+			const realCache = await caches.open("sw-default");
+			await realCache.put(
+				`${domain}/restart-check`,
+				new Response("{}", { status: 200 }),
+			);
+
+			// Simulate SW restart: in-memory openCaches is empty
+			delete openCaches["sw-default"];
+
+			const request = new Request(`${domain}/restart-check`, { method: "GET" });
+			const config = compileConfig({ strategy: strategyCacheOnly });
+
+			const response = await strategyCacheOnly(request, {}, config);
+
+			equal(response?.status, 200);
 		},
 	);
 
@@ -373,6 +392,207 @@ test("Strategies", async (t) => {
 		},
 	);
 
+	// *** staleIfError *** //
+	await t.test(
+		"staleIfError: Should pass through ok response without checking cache",
+		async (_t) => {
+			const request = new Request(`${domain}/200`, { method: "GET" });
+			const { cache, config } = setupMocks(undefined, `${domain}/cache/found`);
+			const input = new Response("{}", { status: 200 });
+
+			const result = await staleIfError(request, input, config);
+
+			equal(result, input);
+			equal(cache.match.callCount, 0);
+		},
+	);
+
+	await t.test(
+		"staleIfError: Should serve cached response when given a 5xx",
+		async (_t) => {
+			const request = new Request(`${domain}/500`, { method: "GET" });
+			const { cache, config } = setupMocks(
+				undefined,
+				`${domain}/cache/expired`,
+			);
+			const input = new Response("", { status: 503 });
+
+			const result = await staleIfError(request, input, config);
+
+			equal(result.status, 200);
+			equal(cache.match.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"staleIfError: Should serve cached response when given a thrown error",
+		async (_t) => {
+			const request = new Request(`${domain}/offline`, { method: "GET" });
+			const { cache, config } = setupMocks(
+				undefined,
+				`${domain}/cache/expired`,
+			);
+
+			const result = await staleIfError(request, new Error("offline"), config);
+
+			equal(result.status, 200);
+			equal(cache.match.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"staleIfError: Should return the 5xx when no cache available",
+		async (_t) => {
+			const request = new Request(`${domain}/500`, { method: "GET" });
+			const { config } = setupMocks(undefined, `${domain}/cache/notfound`);
+			const input = new Response("", { status: 503 });
+
+			const result = await staleIfError(request, input, config);
+
+			equal(result, input);
+		},
+	);
+
+	await t.test(
+		"staleIfError: Should rethrow the error when no cache available",
+		async (_t) => {
+			const request = new Request(`${domain}/offline`, { method: "GET" });
+			const { config } = setupMocks(undefined, `${domain}/cache/notfound`);
+
+			try {
+				await staleIfError(request, new Error("offline"), config);
+				throw new Error("should have thrown");
+			} catch (e) {
+				deepEqual(e, new Error("offline"));
+			}
+		},
+	);
+
+	// *** strategyStaleIfError *** //
+	await t.test(
+		"strategyStaleIfError: Should resolve 200 from network",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+			};
+			const { cache, middleware, config } = setupMocks(strategyStaleIfError);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(middleware.before.callCount, 1);
+			equal(middleware.beforeNetwork.callCount, 1);
+			equal(middleware.afterNetwork.callCount, 1);
+			equal(cache.match.callCount, 0);
+			equal(cache.put.callCount, 1);
+			equal(cache.delete.callCount, 0);
+			equal(middleware.after.callCount, 1);
+
+			equal(response.status, 200);
+			equal(await response.text(), "{}");
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should cache a 200 without Cache-Control",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/cache-control/null`, {
+					method: "GET",
+				}),
+			};
+			const { cache, config } = setupMocks(strategyStaleIfError);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(response.status, 200);
+			equal(cache.put.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should apply Expires from max-age to cached response",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/cache-control/max-age=86400`, {
+					method: "GET",
+				}),
+			};
+			const { cache, config } = setupMocks(strategyStaleIfError);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(response.status, 200);
+			equal(cache.put.callCount, 1);
+			equal(
+				new Date(response.headers.get("Date")) <
+					new Date(response.headers.get("Expires")),
+				true,
+			);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should resolve 200 from cache when network offline",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/offline`, { method: "GET" }),
+			};
+			const { cache, middleware, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/expired`,
+			);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(middleware.before.callCount, 1);
+			equal(middleware.beforeNetwork.callCount, 1);
+			equal(middleware.afterNetwork.callCount, 1);
+			equal(cache.match.callCount, 1);
+			equal(cache.put.callCount, 0);
+			equal(cache.delete.callCount, 0);
+			equal(middleware.after.callCount, 1);
+
+			equal(response.status, 200);
+			equal(await response.text(), "{}");
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should throw when network offline and no cache",
+		async (_t) => {
+			const request = new Request(`${domain}/offline`, { method: "GET" });
+			const { cache, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/notfound`,
+			);
+			const event = { waitUntil: () => {} };
+
+			try {
+				await strategyStaleIfError(request, event, config);
+				throw new Error("should have thrown");
+			} catch (e) {
+				deepEqual(e, new Error("offline"));
+				equal(cache.match.callCount, 1);
+			}
+		},
+	);
+
 	// *** strategyCacheFirst *** //
 	await t.test(
 		"strategyCacheFirst: Should resolve 200 from network when no cache",
@@ -469,6 +689,32 @@ test("Strategies", async (t) => {
 			equal(middleware.after.callCount, 1);
 
 			equal(await response.text(), "{}");
+		},
+	);
+
+	await t.test(
+		"strategyCacheFirst: stale-if-error should serve expired cache when network fails",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/offline`, { method: "GET" }),
+			};
+			const { cache, middleware, config } = setupMocks(
+				strategyCacheFirst,
+				`${domain}/cache/expired`,
+			);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			// Network throws → fall back to the (expired) cached copy
+			equal(response.status, 200);
+			equal(cache.match.callCount, 2);
+			equal(middleware.beforeNetwork.callCount, 1);
+			equal(middleware.afterNetwork.callCount, 1);
+			equal(middleware.after.callCount, 1);
 		},
 	);
 

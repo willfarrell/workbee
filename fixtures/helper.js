@@ -198,13 +198,17 @@ export const setupMocks = (
 	return { cache, middleware, event, config };
 };
 
-Object.assign(global, {
-	caches: cachesOverride,
-	document: documentOverride,
-	fetch: fetchOverride,
-});
-Object.defineProperty(global, "navigator", {
-	value: navigatorOverride,
-	writable: true,
-	configurable: true,
-});
+export const setupGlobals = () => {
+	Object.assign(global, {
+		caches: cachesOverride,
+		document: documentOverride,
+		fetch: fetchOverride,
+	});
+	Object.defineProperty(global, "navigator", {
+		value: navigatorOverride,
+		writable: true,
+		configurable: true,
+	});
+};
+
+setupGlobals();

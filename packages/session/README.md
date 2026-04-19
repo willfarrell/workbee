@@ -25,6 +25,27 @@
 npm install @work-bee/session
 ```
 
+## Session lifecycle & SW termination
+
+The session token is held in the service worker's in-memory state only. Browsers
+terminate idle service workers aggressively (typically after ~30 seconds of
+inactivity, or across SW updates), and on restart the middleware starts with no
+token. This affects applications that rely on the SW to inject `Authorization`
+on every request:
+
+- After SW termination, subsequent requests go out unauthenticated until the
+  user re-authenticates or the client replays an auth call that matches
+  `authnPathPattern`.
+- Timers for inactivity / session expiry are also reset on restart; the hard
+  session timeout effectively resumes from the next successful auth response.
+- If you need session continuity across SW restarts, persist the token yourself
+  on `afterNetwork` (e.g. into a dedicated Cache Storage entry) and restore it
+  before the first `before` call runs.
+
+The middleware deliberately never writes tokens to IndexedDB or Cache Storage
+by default — doing so turns a short-lived credential into one that survives
+device restarts, which changes the risk profile.
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).

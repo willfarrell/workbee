@@ -12,12 +12,9 @@ import {
 	eventInstall,
 	fetchStrategy,
 	findRouteConfig,
-	notificationClickEvent,
 	openCaches,
 	pathPattern,
-	periodicSyncEvent,
 	precacheExtractJSON,
-	pushEvent,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 } from "../index.js";
@@ -361,21 +358,6 @@ test("events", async (t) => {
 		equal(respondWithFn.mock.callCount(), 1);
 		const response = await respondWithFn.mock.calls[0].arguments[0];
 		equal(response.status, 200);
-	});
-
-	// *** periodicSyncEvent *** //
-	await t.test("periodicSyncEvent: should be callable", () => {
-		periodicSyncEvent({});
-	});
-
-	// *** pushEvent *** //
-	await t.test("pushEvent: should be callable", () => {
-		pushEvent({}, { init: () => {}, shutdown: () => {} });
-	});
-
-	// *** notificationClickEvent *** //
-	await t.test("notificationClickEvent: should be callable", () => {
-		notificationClickEvent({});
 	});
 
 	// *** backgroundFetchSuccessEvent *** //
