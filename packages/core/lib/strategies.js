@@ -109,31 +109,31 @@ export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	return response;
 };
 
-export const strategyIgnore = (request) => {
-	return newResponse({ status: 408, url: request.url });
+export const strategyIgnore = async (request) => {
+	return newResponse({ status: 504, url: request.url });
 };
 
 export const strategyCacheFirstIgnore = async (request, event, config) => {
 	let response = await cacheMatch(config.cacheKey, request);
 	if (cacheExpired(response)) {
 		// Treat expired entries as a miss and fall through to strategyIgnore
-		// (408) rather than re-fetching, since this strategy never reaches
+		// (504) rather than re-fetching, since this strategy never reaches
 		// the network.
 		response = undefined;
 	}
-	response ??= strategyIgnore(request, event, config);
+	response ??= await strategyIgnore(request, event, config);
 	return response;
 };
 
 export const strategyStatic = (response) => {
-	return () => {
+	return async () => {
 		if (isResponse(response)) return response.clone();
 		throw response;
 	};
 };
 
 export const strategyHTMLPartition = (options = {}) => {
-	options.makeRequest = (request, config, routeConfig) => {
+	const makeRequest = (request, config, routeConfig) => {
 		const url = urlRemoveHash(request.url).replace(
 			config.pathPattern,
 			routeConfig.path,
@@ -143,10 +143,10 @@ export const strategyHTMLPartition = (options = {}) => {
 			headers: request.headers,
 		});
 	};
-	return strategyPartition(options);
+	return strategyPartition({ ...options, makeRequest });
 };
 
-// { makeRequest, routes, strategy, ... }
+// { makeRequest, routes, strategy, headers, ... }
 export const strategyPartition = (options = {}) => {
 	return async (request, event, config) => {
 		const abortController = new AbortController();
@@ -159,16 +159,19 @@ export const strategyPartition = (options = {}) => {
 			return fetchInlineStrategy(subRequest, event, routeConfig);
 		});
 
-		// Await the first response so its headers can seed the composite. Other
-		// sub-requests continue in parallel. If the first fails, its error
-		// propagates through the stream when pull() consumes it.
-		let headers;
-		try {
-			const first = await responses[0];
-			headers = first.headers;
-			responses[0] = Promise.resolve(first);
-		} catch (e) {
-			responses[0] = Promise.reject(e);
+		// If the caller supplied composite headers (fast path), return the
+		// streaming Response immediately. Otherwise await the first sub-response
+		// so its headers can seed the composite — other sub-requests continue
+		// in parallel while that resolves.
+		let headers = options.headers;
+		if (headers === undefined) {
+			try {
+				const first = await responses[0];
+				headers = first.headers;
+				responses[0] = Promise.resolve(first);
+			} catch (e) {
+				responses[0] = Promise.reject(e);
+			}
 		}
 
 		const { body, streamDeferred } = streamResponses(responses, () =>

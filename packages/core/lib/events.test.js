@@ -1,11 +1,12 @@
 /* global Request Response Headers */
 
-import { deepEqual, equal } from "node:assert";
+import { deepEqual, equal, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
 import "../../../fixtures/helper.js";
 import {
 	backgroundFetchFailEvent,
 	backgroundFetchSuccessEvent,
+	cacheOverrideEvent,
 	compileConfig,
 	eventActivate,
 	eventFetch,
@@ -522,4 +523,107 @@ test("events", async (t) => {
 		// consoleError is bound at import time, just verify it doesn't throw
 		backgroundFetchFailEvent({ message: "fail" });
 	});
+
+	// *** cacheOverrideEvent *** //
+	await t.test(
+		"cacheOverrideEvent: should throw when allowedOrigins is not provided",
+		async () => {
+			const config = compileConfig({ middlewares: [], routes: [] });
+			let caught;
+			try {
+				cacheOverrideEvent(config);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/allowedOrigins/.test(caught.message), true);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: should put string request/response into cache",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "hello",
+				},
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should reject cross-origin MessageEvent",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "https://evil.example.com/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "attacker-payload",
+				},
+			});
+			equal(putFn.mock.callCount(), 0);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should accept same-origin MessageEvent",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "trusted",
+				},
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: should handle Request/Response objects",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const request = new Request("http://localhost:8080/test");
+			const response = new Response("body");
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: { request, response },
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
 });

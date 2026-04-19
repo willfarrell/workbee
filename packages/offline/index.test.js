@@ -40,8 +40,27 @@ test("idbSerializeRequest: serializes a POST request with body and headers", asy
 
 	strictEqual(serialized.method, "POST");
 	strictEqual(serialized.url, `${domain}/200`);
-	strictEqual(serialized.body, '{"key":"value"}');
+	strictEqual(serialized.body.encoding, "text");
+	strictEqual(serialized.body.data, '{"key":"value"}');
 	strictEqual(serialized.headers["content-type"], "application/json");
+});
+
+test("idbSerializeRequest: roundtrips a binary (ArrayBuffer) body", async () => {
+	const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3]);
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		headers: new Headers({ "Content-Type": "application/octet-stream" }),
+		body: bytes,
+	});
+
+	const serialized = await idbSerializeRequest(request);
+	const restored = idbDeserializeRequest(serialized);
+	const restoredBytes = new Uint8Array(await restored.arrayBuffer());
+
+	strictEqual(restoredBytes.length, bytes.length);
+	for (let i = 0; i < bytes.length; i++) {
+		strictEqual(restoredBytes[i], bytes[i]);
+	}
 });
 
 test("idbSerializeRequest: preserves all headers (redaction is middleware responsibility)", async () => {

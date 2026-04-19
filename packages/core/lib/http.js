@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 /* global Headers Request Response */
 export const headersGetAll = (headersObj) => {
-	const headers = {};
-	if (!headersObj) return headers;
-	for (const [key, value] of headersObj.entries() ?? []) {
-		headers[key] = value;
+	if (!headersObj) return {};
+	if (typeof headersObj.entries === "function") {
+		const headers = {};
+		for (const [key, value] of headersObj.entries() ?? []) {
+			headers[key] = value;
+		}
+		return headers;
 	}
-	return headers;
+	return { ...headersObj };
 };
 
 export const urlRemoveHash = (url) => {

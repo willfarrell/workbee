@@ -194,8 +194,31 @@ export default offlineMiddleware;
 // handling sensitive body data should implement a custom `redactBody` strategy
 // or avoid using the offline queue for those routes.
 
+const textContentType = (ct) =>
+	!ct ||
+	ct.startsWith("text/") ||
+	ct.startsWith("application/json") ||
+	ct.startsWith("application/javascript") ||
+	ct.startsWith("application/xml") ||
+	ct.startsWith("application/xhtml+xml") ||
+	ct.includes("+json") ||
+	ct.includes("+xml");
+
+const bytesToBase64 = (bytes) => {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++)
+		binary += String.fromCharCode(bytes[i]);
+	return btoa(binary);
+};
+
+const base64ToBytes = (base64) => {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+};
+
 export const idbSerializeRequest = async (request) => {
-	// TODO test using ...request instead
 	const properties = {};
 	for (const property of [
 		"method",
@@ -213,8 +236,17 @@ export const idbSerializeRequest = async (request) => {
 			properties[property] = request[property];
 		}
 	}
-	const body = request.body && (await request.clone().text());
 	const headers = headersGetAll(request.headers);
+	let body = null;
+	if (request.body) {
+		const cloned = request.clone();
+		if (textContentType(headers["content-type"])) {
+			body = { encoding: "text", data: await cloned.text() };
+		} else {
+			const bytes = new Uint8Array(await cloned.arrayBuffer());
+			body = { encoding: "base64", data: bytesToBase64(bytes) };
+		}
+	}
 	return {
 		...properties,
 		headers,
@@ -223,5 +255,9 @@ export const idbSerializeRequest = async (request) => {
 };
 
 export const idbDeserializeRequest = (data) => {
-	return newRequest(data.url, data);
+	let body = data.body;
+	if (body && typeof body === "object" && typeof body.encoding === "string") {
+		body = body.encoding === "base64" ? base64ToBytes(body.data) : body.data;
+	}
+	return newRequest(data.url, { ...data, body });
 };

@@ -67,12 +67,30 @@ const resolveMiddlewares = (cfg) => {
 	return cfg;
 };
 
-const compileRoute = (parent, raw) => {
+export const compileRoute = (parent, raw) => {
 	if (typeof raw === "string") raw = { path: raw };
 	return resolveMiddlewares({ ...pick(parent, routeInheritKeys), ...raw });
 };
 
-export const compileConfig = (config) => {
+const assertArray = (field, value) => {
+	if (value !== undefined && !Array.isArray(value)) {
+		throw new TypeError(
+			`compileConfig: \`${field}\` must be an array, received ${typeof value}`,
+		);
+	}
+};
+
+export const compileConfig = (config = {}) => {
+	assertArray("routes", config.routes);
+	assertArray("middlewares", config.middlewares);
+	// precache.routes can be string[], {path}[], or a single string URL —
+	// only the array forms need asserting.
+	if (
+		config.precache?.routes !== undefined &&
+		typeof config.precache.routes !== "string"
+	) {
+		assertArray("precache.routes", config.precache.routes);
+	}
 	const baseConfig = resolveMiddlewares({ ...defaultConfig, ...config });
 	baseConfig.routes = baseConfig.routes.map((r) => compileRoute(baseConfig, r));
 
@@ -81,9 +99,12 @@ export const compileConfig = (config) => {
 		...pick(baseConfig, [cachePrefix, cacheName, middlewares]),
 		...baseConfig.precache,
 	});
-	precacheConfig.routes = precacheConfig.routes.map((r) =>
-		compileRoute(precacheConfig, r),
-	);
+	// A string URL is compiled by events.js after fetching + extract().
+	if (Array.isArray(precacheConfig.routes)) {
+		precacheConfig.routes = precacheConfig.routes.map((r) =>
+			compileRoute(precacheConfig, r),
+		);
+	}
 	baseConfig.precache = precacheConfig;
 
 	return baseConfig;

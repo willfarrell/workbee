@@ -801,7 +801,7 @@ test("Strategies", async (t) => {
 	);
 
 	// *** strategyIgnore *** //
-	await t.test("strategyIgnore: Should always return 408", async (_t) => {
+	await t.test("strategyIgnore: Should always return 504", async (_t) => {
 		const event = {
 			__request: new Request(`${domain}/offline`, {
 				method: "GET",
@@ -818,13 +818,13 @@ test("Strategies", async (t) => {
 		equal(cache.delete.callCount, 0);
 		equal(middleware.after.callCount, 1);
 
-		equal(response.status, 408);
+		equal(response.status, 504);
 		equal(await response.text(), "");
 	});
 
 	// *** strategyCacheFirstIgnore *** //
 	await t.test(
-		"strategyCacheFirstIgnore: Should resolve 408 from network",
+		"strategyCacheFirstIgnore: Should resolve 504 from network",
 		async (_t) => {
 			const event = {
 				__request: new Request(`${domain}/200`, {
@@ -850,14 +850,14 @@ test("Strategies", async (t) => {
 			equal(cache.delete.callCount, 0);
 			equal(middleware.after.callCount, 1);
 
-			equal(response.status, 408);
+			equal(response.status, 504);
 			equal(await response.text(), "");
 		},
 	);
 
 	// *** strategyCacheFirstIgnore with expired cache *** //
 	await t.test(
-		"strategyCacheFirstIgnore: Should resolve 408 when cache is expired",
+		"strategyCacheFirstIgnore: Should resolve 504 when cache is expired",
 		async (_t) => {
 			const event = {
 				__request: new Request(`${domain}/200`, {
@@ -879,7 +879,7 @@ test("Strategies", async (t) => {
 			equal(cache.match.callCount, 1);
 			equal(middleware.after.callCount, 1);
 
-			equal(response.status, 408);
+			equal(response.status, 504);
 		},
 	);
 
@@ -949,14 +949,15 @@ test("Strategies", async (t) => {
 			const result = await fetchInlineStrategy(event.__request, event, config);
 			equal(result, error);
 
-			// Calling the raw strategy directly throws — so Error-path middleware
-			// runs via fetchStrategy's try/catch.
+			// Calling the raw strategy rejects — fetchStrategy's try/catch
+			// captures the error and routes it through error-path middleware.
+			let caught;
 			try {
-				strategy();
-				throw new Error("expected throw");
+				await strategy();
 			} catch (e) {
-				equal(e, error);
+				caught = e;
 			}
+			equal(caught, error);
 		},
 	);
 
@@ -1034,6 +1035,46 @@ test("Strategies", async (t) => {
 			// Cancel the stream to trigger the cancel() callback (line 164)
 			await response.body.cancel();
 			await Promise.all(waitUntils);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: with options.headers skips blocking on first response",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const originalFetch = globalThis.fetch;
+			// Never-resolving fetch: if the strategy blocks on the first
+			// response, the test will hang. Passing options.headers must
+			// bypass that.
+			globalThis.fetch = () => new Promise(() => {});
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "/a" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [],
+						headers: { "Content-Type": "text/html; charset=utf-8" },
+					}),
+				),
+			);
+
+			// Should return immediately without awaiting fetch.
+			const response = await fetchStrategy(event.__request, event, config);
+			strictEqual(
+				response.headers.get("Content-Type"),
+				"text/html; charset=utf-8",
+			);
+			// Don't consume body (it would block on fetch).
+			await response.body.cancel();
+			await Promise.allSettled(waitUntils);
+
+			globalThis.fetch = originalFetch;
 		},
 	);
 
@@ -1237,6 +1278,20 @@ test("Strategies", async (t) => {
 				await response.text(),
 				"<html><head></head><body><header></header><main></main><script></script><footer></footer></body></html>",
 			);
+		},
+	);
+
+	await t.test(
+		"strategyHTMLPartition: must not mutate caller options",
+		async (_t) => {
+			const userOptions = compileConfig({
+				routes: [{ path: "$1/header" }],
+				strategy: strategyNetworkOnly,
+				middlewares: [],
+			});
+			const before = userOptions.makeRequest;
+			strategyHTMLPartition(userOptions);
+			strictEqual(userOptions.makeRequest, before);
 		},
 	);
 

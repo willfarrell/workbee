@@ -138,6 +138,37 @@ describe("lib/config", () => {
 	test("compileConfig returns WorkBeeConfig", () => {
 		expect(compileConfig({})).type.toBe<WorkBeeConfig>();
 	});
+
+	test("compileConfig accepts a user-facing partial config", () => {
+		expect(
+			compileConfig({
+				cachePrefix: "v1-",
+				cacheName: "assets",
+				skipWaiting: false,
+				middlewares: [],
+				routes: [
+					{
+						cacheName: "api",
+						pathPattern: /^\/api/,
+						methods: ["GET"],
+					},
+				],
+				precache: {
+					routes: ["/offline.html", { path: "/styles.css" }],
+					eventType: "precache",
+				},
+			}),
+		).type.toBe<WorkBeeConfig>();
+	});
+
+	test("compileConfig rejects internal-only fields", () => {
+		expect(compileConfig).type.not.toBeCallableWith({
+			cacheKey: "computed-internally",
+		});
+		expect(compileConfig).type.not.toBeCallableWith({
+			before: [],
+		});
+	});
 });
 
 describe("lib/console", () => {

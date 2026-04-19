@@ -15,7 +15,8 @@ export const applyExpires = (response) => {
 	const maxAge = match ? Number.parseInt(match[2], 10) : 0;
 	if (!maxAge) return response;
 	const dateHeader = response.headers.get("Date");
-	const responseTime = dateHeader ? new Date(dateHeader).getTime() : Date.now();
+	const parsedDate = dateHeader ? new Date(dateHeader).getTime() : NaN;
+	const responseTime = Number.isFinite(parsedDate) ? parsedDate : Date.now();
 	return addHeaderToResponse(
 		response,
 		"Expires",

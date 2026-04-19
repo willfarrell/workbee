@@ -183,6 +183,47 @@ sequenceDiagram
 	ServiceWorker->>Page: response
 ```
 
+### Ignore
+
+Always returns a synthetic `504 Gateway Timeout` response without hitting cache or network. Useful for cheaply short-circuiting a route you do not want the ServiceWorker to handle.
+
+```javascript
+import { strategyIgnore } from '@work-bee/core'
+
+const config = {
+  strategy: strategyIgnore
+}
+```
+
+### Cache First Ignore
+
+Tries the cache; if the entry is missing or expired, returns the same synthetic `504` as `strategyIgnore` instead of hitting the network. Use when you want to serve only primed cache and fail fast otherwise.
+
+```javascript
+import { strategyCacheFirstIgnore } from '@work-bee/core'
+
+const config = {
+  strategy: strategyCacheFirstIgnore
+}
+```
+
+### Static
+
+Returns a pre-built `Response` (cloned on each call) for every request. Passing an `Error` instead makes the strategy reject — the failure flows through the normal error-path middleware.
+
+```javascript
+import { strategyStatic } from '@work-bee/core'
+
+const offlineResponse = new Response('offline', {
+  status: 503,
+  headers: { 'Content-Type': 'text/plain' }
+})
+
+const config = {
+  strategy: strategyStatic(offlineResponse)
+}
+```
+
 ### StaleWhileRevalidate
 
 ```mermaid

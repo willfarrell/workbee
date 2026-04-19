@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
 import { cachePut, cachesDelete } from "./cache.js";
+import { compileRoute } from "./config.js";
 import { consoleError } from "./console.js";
 import { newRequest, newResponse } from "./http.js";
 
@@ -27,7 +28,11 @@ const eventInstallWaitUntil = async (event, config) => {
 			config.precache,
 		);
 
-		routes = await extract(response);
+		const extracted = await extract(response);
+		// Externally-fetched routes may be plain {path} / strings; run them
+		// through the same compilation pipeline as inline routes so each has
+		// flattened middleware arrays and a cacheKey.
+		routes = extracted.map((r) => compileRoute(config.precache, r));
 	}
 	await Promise.all(
 		routes.map((routeConfig) =>

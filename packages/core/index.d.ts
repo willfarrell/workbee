@@ -7,7 +7,7 @@ export type Strategy = (
 	request: Request,
 	event: ExtendableEvent,
 	config: RouteConfig,
-) => Promise<Response> | Response;
+) => Promise<Response>;
 
 /** Middleware applied before the strategy executes. */
 export type BeforeMiddleware = (
@@ -352,10 +352,10 @@ export const strategyCacheFirst: Strategy;
 /** Stale-while-revalidate strategy: returns cache and revalidates in background. */
 export const strategyStaleWhileRevalidate: Strategy;
 
-/** Ignore strategy: returns a 408 response. */
+/** Ignore strategy: returns a 504 response. */
 export const strategyIgnore: Strategy;
 
-/** Cache-first-ignore strategy: tries cache, returns 408 if not cached. */
+/** Cache-first-ignore strategy: tries cache, returns 504 if not cached. */
 export const strategyCacheFirstIgnore: Strategy;
 
 /**

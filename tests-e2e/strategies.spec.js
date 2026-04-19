@@ -223,7 +223,7 @@ test.describe("Strategies", () => {
 		await context.close();
 	});
 
-	test("strategyCacheFirstIgnore returns 408 on miss", async ({ browser }) => {
+	test("strategyCacheFirstIgnore returns 504 on miss", async ({ browser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
@@ -233,7 +233,7 @@ test.describe("Strategies", () => {
 			const response = await fetch("/strategy/strategyCacheFirstIgnore");
 			return { status: response.status };
 		});
-		expect(result.status).toBe(408);
+		expect(result.status).toBe(504);
 		await context.close();
 	});
 

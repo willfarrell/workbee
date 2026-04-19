@@ -7,7 +7,6 @@ import {
 	applyExpires,
 	cacheDeleteExpired,
 	cacheExpired,
-	cacheOverrideEvent,
 	cachePut,
 	openCaches,
 } from "../index.js";
@@ -58,13 +57,10 @@ test("cache", async (t) => {
 	// *** cachePut *** //
 	await t.test(
 		"cachePut: should store response in cache via openCaches",
-		async () => {
+		async (tt) => {
 			const putFn = mock.fn();
-			const mockCache = {
-				put: putFn,
-			};
-			// Pre-populate openCaches so it doesn't call caches.open
-			openCaches["test-cache"] = mockCache;
+			openCaches["test-cache"] = { put: putFn };
+			tt.after(() => delete openCaches["test-cache"]);
 
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body", { status: 200 });
@@ -73,9 +69,6 @@ test("cache", async (t) => {
 
 			equal(putFn.mock.callCount(), 1);
 			equal(putFn.mock.calls[0].arguments[0], "http://localhost:8080/test");
-
-			// Clean up
-			delete openCaches["test-cache"];
 		},
 	);
 
@@ -173,145 +166,16 @@ test("cache", async (t) => {
 		},
 	);
 
-	// *** cacheOverrideEvent *** //
-	await t.test(
-		"cacheOverrideEvent: should throw when allowedOrigins is not provided",
-		async () => {
-			const config = (await import("../index.js")).compileConfig({
-				middlewares: [],
-				routes: [],
-			});
-			let caught;
-			try {
-				cacheOverrideEvent(config);
-			} catch (e) {
-				caught = e;
-			}
-			strictEqual(caught instanceof Error, true);
-			strictEqual(/allowedOrigins/.test(caught.message), true);
-		},
-	);
-
-	await t.test(
-		"cacheOverrideEvent: should put string request/response into cache",
-		async () => {
-			const putFn = mock.fn();
-			const mockCache = { put: putFn };
-			openCaches["sw-default"] = mockCache;
-
-			const config = (await import("../index.js")).compileConfig({
-				middlewares: [],
-				routes: [],
-			});
-
-			const handler = cacheOverrideEvent(config, {
-				allowedOrigins: ["http://localhost:8080"],
-			});
-			await handler({
-				source: { url: "http://localhost:8080/page" },
-				data: {
-					request: "http://localhost:8080/test",
-					response: "hello",
-				},
-			});
-
-			equal(putFn.mock.callCount(), 1);
-
-			delete openCaches["sw-default"];
-		},
-	);
-
-	await t.test(
-		"cacheOverrideEvent: with allowedOrigins should reject cross-origin MessageEvent",
-		async () => {
-			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-
-			const config = (await import("../index.js")).compileConfig({
-				middlewares: [],
-				routes: [],
-			});
-
-			const handler = cacheOverrideEvent(config, {
-				allowedOrigins: ["http://localhost:8080"],
-			});
-
-			await handler({
-				source: { url: "https://evil.example.com/page" },
-				data: {
-					request: "http://localhost:8080/test",
-					response: "attacker-payload",
-				},
-			});
-
-			equal(putFn.mock.callCount(), 0);
-			delete openCaches["sw-default"];
-		},
-	);
-
-	await t.test(
-		"cacheOverrideEvent: with allowedOrigins should accept same-origin MessageEvent",
-		async () => {
-			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-
-			const config = (await import("../index.js")).compileConfig({
-				middlewares: [],
-				routes: [],
-			});
-
-			const handler = cacheOverrideEvent(config, {
-				allowedOrigins: ["http://localhost:8080"],
-			});
-
-			await handler({
-				source: { url: "http://localhost:8080/page" },
-				data: {
-					request: "http://localhost:8080/test",
-					response: "trusted",
-				},
-			});
-
-			equal(putFn.mock.callCount(), 1);
-			delete openCaches["sw-default"];
-		},
-	);
-
-	await t.test(
-		"cacheOverrideEvent: should handle Request/Response objects",
-		async () => {
-			const putFn = mock.fn();
-			const mockCache = { put: putFn };
-			openCaches["sw-default"] = mockCache;
-
-			const config = (await import("../index.js")).compileConfig({
-				middlewares: [],
-				routes: [],
-			});
-
-			const request = new Request("http://localhost:8080/test");
-			const response = new Response("body");
-
-			const handler = cacheOverrideEvent(config, {
-				allowedOrigins: ["http://localhost:8080"],
-			});
-			await handler({
-				source: { url: "http://localhost:8080/page" },
-				data: { request, response },
-			});
-
-			equal(putFn.mock.callCount(), 1);
-
-			delete openCaches["sw-default"];
-		},
-	);
-
 	// *** Concurrent open race *** //
-	await t.test("concurrent cachePut only opens the cache once", async () => {
+	await t.test("concurrent cachePut only opens the cache once", async (tt) => {
 		const key = "race-cache";
 		delete openCaches[key];
-
 		const originalOpen = globalThis.caches.open;
+		tt.after(() => {
+			delete openCaches[key];
+			globalThis.caches.open = originalOpen;
+		});
+
 		let openCount = 0;
 		const putFn = mock.fn();
 		globalThis.caches.open = () => {
@@ -329,23 +193,22 @@ test("cache", async (t) => {
 
 		strictEqual(openCount, 1);
 		equal(putFn.mock.callCount(), 2);
-
-		delete openCaches[key];
-		globalThis.caches.open = originalOpen;
 	});
 
 	// *** cachePut with caches.open *** //
 	await t.test(
 		"cachePut: should open cache when not in openCaches",
-		async () => {
+		async (tt) => {
 			const putFn = mock.fn();
 			const mockCache = { put: putFn };
 
 			const originalOpen = globalThis.caches.open;
 			globalThis.caches.open = () => Promise.resolve(mockCache);
-
-			// Ensure cache key is not pre-populated
 			delete openCaches["new-cache"];
+			tt.after(() => {
+				delete openCaches["new-cache"];
+				globalThis.caches.open = originalOpen;
+			});
 
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body", { status: 200 });
@@ -354,16 +217,13 @@ test("cache", async (t) => {
 
 			equal(putFn.mock.callCount(), 1);
 			equal(openCaches["new-cache"], mockCache);
-
-			delete openCaches["new-cache"];
-			globalThis.caches.open = originalOpen;
 		},
 	);
 
 	// *** cachePut QuotaExceededError retry *** //
 	await t.test(
 		"cachePut: should retry after QuotaExceededError by deleting expired from same cache",
-		async () => {
+		async (tt) => {
 			let callCount = 0;
 			const putFn = mock.fn(() => {
 				callCount++;
@@ -372,10 +232,8 @@ test("cache", async (t) => {
 					throw err;
 				}
 			});
-			const mockCache = { put: putFn };
-			openCaches["quota-cache"] = mockCache;
+			openCaches["quota-cache"] = { put: putFn };
 
-			// Mock caches.open for cacheDeleteExpired
 			const deleteFn = mock.fn();
 			const originalOpen = globalThis.caches.open;
 			globalThis.caches.open = () =>
@@ -383,6 +241,10 @@ test("cache", async (t) => {
 					matchAll: () => Promise.resolve([]),
 					delete: deleteFn,
 				});
+			tt.after(() => {
+				delete openCaches["quota-cache"];
+				globalThis.caches.open = originalOpen;
+			});
 
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body", { status: 200 });
@@ -390,18 +252,15 @@ test("cache", async (t) => {
 			await cachePut("quota-cache", request, response);
 
 			equal(putFn.mock.callCount(), 2);
-
-			delete openCaches["quota-cache"];
-			globalThis.caches.open = originalOpen;
 		},
 	);
 
-	await t.test("cachePut: should throw non-QuotaExceededError", async () => {
+	await t.test("cachePut: should throw non-QuotaExceededError", async (tt) => {
 		const putFn = mock.fn(() => {
 			throw new TypeError("some other error");
 		});
-		const mockCache = { put: putFn };
-		openCaches["error-cache"] = mockCache;
+		openCaches["error-cache"] = { put: putFn };
+		tt.after(() => delete openCaches["error-cache"]);
 
 		const request = new Request("http://localhost:8080/test");
 		const response = new Response("body", { status: 200 });
@@ -414,19 +273,16 @@ test("cache", async (t) => {
 			equal(e.name, "TypeError");
 		}
 		equal(threw, true);
-
-		delete openCaches["error-cache"];
 	});
 
 	await t.test(
 		"cachePut: should throw QuotaExceededError after final retry",
-		async () => {
+		async (tt) => {
 			const putFn = mock.fn(() => {
 				const err = new DOMException("quota exceeded", "QuotaExceededError");
 				throw err;
 			});
-			const mockCache = { put: putFn };
-			openCaches["quota-cache-2"] = mockCache;
+			openCaches["quota-cache-2"] = { put: putFn };
 
 			const originalOpen = globalThis.caches.open;
 			const originalKeys = globalThis.caches.keys;
@@ -436,6 +292,11 @@ test("cache", async (t) => {
 					delete: mock.fn(),
 				});
 			globalThis.caches.keys = () => Promise.resolve([]);
+			tt.after(() => {
+				delete openCaches["quota-cache-2"];
+				globalThis.caches.open = originalOpen;
+				globalThis.caches.keys = originalKeys;
+			});
 
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body", { status: 200 });
@@ -449,10 +310,6 @@ test("cache", async (t) => {
 			strictEqual(caught?.name, "QuotaExceededError");
 			// initial + retry 0 (same-cache purge) + retry 1 (all-caches purge) = 3.
 			equal(putFn.mock.callCount(), 3);
-
-			delete openCaches["quota-cache-2"];
-			globalThis.caches.open = originalOpen;
-			globalThis.caches.keys = originalKeys;
 		},
 	);
 
@@ -518,10 +375,9 @@ test("cache", async (t) => {
 
 	await t.test(
 		"cachesDelete: should remove deleted keys from openCaches",
-		async () => {
+		async (tt) => {
 			const { cachesDelete, openCaches } = await import("../index.js");
 
-			// Seed openCaches with entries
 			openCaches["sw-keep"] = { fake: true };
 			openCaches["sw-remove"] = { fake: true };
 
@@ -529,17 +385,17 @@ test("cache", async (t) => {
 			const originalDelete = globalThis.caches.delete;
 			globalThis.caches.keys = () => Promise.resolve(["sw-keep", "sw-remove"]);
 			globalThis.caches.delete = mock.fn(() => Promise.resolve(true));
+			tt.after(() => {
+				delete openCaches["sw-keep"];
+				delete openCaches["sw-remove"];
+				globalThis.caches.keys = originalKeys;
+				globalThis.caches.delete = originalDelete;
+			});
 
 			await cachesDelete(["sw-keep"]);
 
-			// sw-remove should be gone from openCaches
 			equal(openCaches["sw-remove"], undefined);
-			// sw-keep should still be there
 			equal(openCaches["sw-keep"]?.fake, true);
-
-			delete openCaches["sw-keep"];
-			globalThis.caches.keys = originalKeys;
-			globalThis.caches.delete = originalDelete;
 		},
 	);
 
@@ -650,6 +506,27 @@ test("cache", async (t) => {
 
 			strictEqual(result, response);
 			strictEqual(result.headers.get("Expires"), existingExpires);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should fall back to Date.now() when Date header is unparseable",
+		async () => {
+			const before = Date.now();
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=60",
+					Date: "not-a-real-date",
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			const expiresValue = result.headers.get("Expires");
+			strictEqual(expiresValue === "Invalid Date", false);
+			const expiresDate = new Date(expiresValue).getTime();
+			strictEqual(Number.isFinite(expiresDate), true);
+			strictEqual(expiresDate >= before + 60 * 1000 - 1000, true);
 		},
 	);
 
