@@ -13,6 +13,11 @@
 			"types": "./index.d.ts",
 			"import": "./index.js",
 			"default": "./index.js"
+		},
+		"./precache-json": {
+			"types": "./precache-json.d.ts",
+			"import": "./precache-json.js",
+			"default": "./precache-json.js"
 		}
 	},
 	"types": "index.d.ts",
@@ -20,12 +25,15 @@
 	"files": [
 		"index.js",
 		"index.d.ts",
+		"precache-json.js",
+		"precache-json.d.ts",
 		"lib/cache.js",
 		"lib/config.js",
 		"lib/console.js",
 		"lib/events.js",
 		"lib/http.js",
 		"lib/postMessage.js",
+		"lib/route.js",
 		"lib/strategies.js"
 	],
 	"scripts": {

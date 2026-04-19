@@ -10,4 +10,5 @@ export * from "./lib/console.js";
 export * from "./lib/events.js";
 export * from "./lib/http.js";
 export * from "./lib/postMessage.js";
+export * from "./lib/route.js";
 export * from "./lib/strategies.js";

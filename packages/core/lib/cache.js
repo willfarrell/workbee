@@ -27,8 +27,14 @@ export const applyExpires = (response) => {
 export const openCaches = {};
 const inFlightOpens = {};
 
-const getCache = (cacheKey) => {
-	if (openCaches[cacheKey]) return openCaches[cacheKey];
+const getCache = async (cacheKey) => {
+	// A caller outside cachesDelete() may have dropped this cache from the
+	// CacheStorage; detect the drift and reopen instead of handing back a
+	// stale Cache reference whose writes land nowhere.
+	if (openCaches[cacheKey] && (await caches.has(cacheKey))) {
+		return openCaches[cacheKey];
+	}
+	delete openCaches[cacheKey];
 	inFlightOpens[cacheKey] ??= caches.open(cacheKey).then((cache) => {
 		openCaches[cacheKey] = cache;
 		delete inFlightOpens[cacheKey];

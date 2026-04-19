@@ -29,26 +29,33 @@ export const addHeaderToRequest = (request, key, value) => {
 };
 
 export const isResponse = (response) => response instanceof Response;
-export const newResponse = ({ status, statusText, url, body }, headersObj) => {
+export const newResponse = ({ status, statusText, body }, headersObj) => {
 	const headers = headersGetAll(headersObj);
-	headers.date ??= new Date().toString();
-	const response = new Response(body, { status, statusText, headers });
-	if (url) {
-		Object.defineProperty(response, "url", { value: url });
+	if (headers.Date === undefined && headers.date === undefined) {
+		headers.Date = new Date().toString();
 	}
-	return response;
+	return new Response(body, { status, statusText, headers });
+};
+
+const rebuildResponse = (response, headers) => {
+	const clone = response.clone();
+	return new Response(clone.body, {
+		status: response.status,
+		statusText: response.statusText,
+		headers,
+	});
 };
 
 export const addHeaderToResponse = (response, key, value) => {
 	const headers = new Headers(headersGetAll(response.headers));
 	headers.set(key, value);
-	return newResponse(response, headers);
+	return rebuildResponse(response, headers);
 };
 
 export const deleteHeaderFromResponse = (response, key) => {
 	const headers = new Headers(headersGetAll(response.headers));
 	headers.delete(key);
-	return newResponse(response, headers);
+	return rebuildResponse(response, headers);
 };
 
 export const getMethod = "GET";

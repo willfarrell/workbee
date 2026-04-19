@@ -32,7 +32,7 @@ test("perf: newResponse", async () => {
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
 		newResponse(
-			{ status: 200, url: `${domain}/api/users`, body: "{}" },
+			{ status: 200, body: "{}" },
 			new Headers({ "Content-Type": "application/json" }),
 		);
 	}

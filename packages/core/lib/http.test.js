@@ -100,16 +100,14 @@ test("http", async (t) => {
 
 	// *** newResponse *** //
 	await t.test(
-		"newResponse: should create Response with status and url",
+		"newResponse: should create Response with status and body",
 		async () => {
 			const response = newResponse({
 				status: 201,
-				url: "http://localhost:8080/test",
 				body: "hello",
 			});
 			equal(response instanceof Response, true);
 			equal(response.status, 201);
-			equal(response.url, "http://localhost:8080/test");
 			equal(await response.text(), "hello");
 		},
 	);
@@ -117,7 +115,7 @@ test("http", async (t) => {
 	await t.test(
 		"newResponse: should auto-set date header when not provided",
 		async () => {
-			const response = newResponse({ status: 200, url: "", body: "" });
+			const response = newResponse({ status: 200, body: "" });
 			const dateHeader = response.headers.get("date");
 			equal(typeof dateHeader, "string");
 			equal(dateHeader.length > 0, true);
@@ -129,7 +127,32 @@ test("http", async (t) => {
 		async () => {
 			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
 			const headers = new Headers({ date: customDate });
-			const response = newResponse({ status: 200, url: "", body: "" }, headers);
+			const response = newResponse({ status: 200, body: "" }, headers);
+			equal(response.headers.get("date"), customDate);
+		},
+	);
+
+	await t.test(
+		"newResponse: response.url follows Response spec ('' for synthesized) even when callers pass a url option",
+		async () => {
+			// Post-shim removal: newResponse no longer monkey-patches Response.url.
+			// Callers that need a URL-bearing Response should use Cache.match()
+			// fixtures (the platform attaches .url from the request key).
+			const response = newResponse({
+				status: 200,
+				body: "",
+				url: "http://localhost:8080/test",
+			});
+			strictEqual(response.url, "");
+		},
+	);
+
+	await t.test(
+		"newResponse: does not overwrite Date when provided via a Headers instance",
+		async () => {
+			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
+			const headers = new Headers({ Date: customDate });
+			const response = newResponse({ status: 200, body: "" }, headers);
 			equal(response.headers.get("date"), customDate);
 		},
 	);
@@ -191,11 +214,7 @@ test("http", async (t) => {
 	await t.test(
 		"addHeaderToResponse: should add header to response",
 		async () => {
-			const response = newResponse({
-				status: 200,
-				url: "http://localhost:8080/test",
-				body: "",
-			});
+			const response = newResponse({ status: 200, body: "" });
 			const result = addHeaderToResponse(response, "X-Custom", "value");
 			equal(result instanceof Response, true);
 			equal(result.headers.get("X-Custom"), "value");
@@ -210,6 +229,18 @@ test("http", async (t) => {
 			equal(result.status, 201);
 			equal(result.headers.get("X-Custom"), "value");
 			equal(await result.text(), "response-body");
+		},
+	);
+
+	await t.test(
+		"addHeaderToResponse: does not lock the caller's body stream",
+		async () => {
+			const response = new Response("original-body", { status: 200 });
+			const result = addHeaderToResponse(response, "X-Custom", "value");
+			equal(result.headers.get("X-Custom"), "value");
+			equal(await result.text(), "original-body");
+			// Caller should still be able to read the original response body after.
+			equal(await response.text(), "original-body");
 		},
 	);
 
@@ -228,10 +259,7 @@ test("http", async (t) => {
 		"deleteHeaderFromResponse: should remove header from response",
 		async () => {
 			const headers = new Headers({ "X-Remove": "value" });
-			const response = newResponse(
-				{ status: 200, url: "http://localhost:8080/test", body: "" },
-				headers,
-			);
+			const response = newResponse({ status: 200, body: "" }, headers);
 			equal(response.headers.get("X-Remove"), "value");
 			const result = deleteHeaderFromResponse(response, "X-Remove");
 			equal(result.headers.get("X-Remove"), null);

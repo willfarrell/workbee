@@ -196,6 +196,39 @@ export interface UserConfig extends UserRouteConfig {
 /** Compiles a user-provided configuration into a fully resolved WorkBeeConfig. */
 export function compileConfig(config: UserConfig): WorkBeeConfig;
 
+/**
+ * Compiles a single route definition against a parent route-like config.
+ * Exposed so event handlers (e.g. a precache loader that fetches route
+ * configs from JSON) can produce fully-flattened `RouteConfig`s without
+ * re-running the full `compileConfig` pipeline.
+ */
+export function compileRoute(
+	parent: RouteConfig,
+	raw: UserPrecacheRouteConfig | string,
+): RouteConfig;
+
+/** Keys inherited from a parent route/config into a child route. */
+export const routeInheritKeys: readonly [
+	"cachePrefix",
+	"cacheName",
+	"methods",
+	"strategy",
+	"middlewares",
+];
+
+/** Returns a shallow copy of `originalObject` containing only the requested keys (skipping undefined). */
+export function pick<T extends object>(
+	originalObject: T | undefined,
+	keysToPick: readonly (keyof T | string)[],
+): Partial<T>;
+
+/**
+ * Flattens `middlewares[]` on a partial route config into per-phase arrays
+ * (`before`, `beforeNetwork`, `afterNetwork`, `after`) and derives `cacheKey`.
+ * Mutates and returns the same object.
+ */
+export function resolveMiddlewares(cfg: Partial<RouteConfig>): RouteConfig;
+
 // --- lib/console.js ---
 
 /** Bound reference to console.log. */
@@ -280,23 +313,15 @@ export function addHeaderToRequest(
 export function isResponse(value: unknown): value is Response;
 
 /**
- * Creates a new Response with optional status, statusText, url, body, and headers.
- *
- * The `url` option is a Node-test affordance: per the Fetch spec, `Response.url`
- * is readonly and is only set by the platform on responses produced by `fetch()`
- * or retrieved from a `Cache`. The option uses `Object.defineProperty` to set
- * the field in environments (Node, some test harnesses) that would otherwise
- * leave it empty. In real browsers, synthesized `Response` objects always have
- * `.url === ""` regardless of this option, and `.clone()` will not preserve
- * the defineProperty-set value. Production code that reads cached response URLs
- * should rely on the Cache API (which returns responses with URLs set by the
- * request key) rather than inspecting `.url` on a synthesized `Response`.
+ * Creates a new Response with optional status, statusText, body, and headers.
+ * Per the Fetch spec `Response.url` is readonly and is "" for synthesized
+ * responses — callers that need a URL-bearing Response should use the Cache
+ * API (Cache.match returns responses with .url set by the request key).
  */
 export function newResponse(
 	options: {
 		status?: number;
 		statusText?: string;
-		url?: string;
 		body?: BodyInit | null;
 	},
 	headersObj?: Headers | Record<string, string>,

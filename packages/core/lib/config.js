@@ -6,29 +6,32 @@ import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
 
 // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 export const pathPattern = (pattern) => new RegExp(pattern);
-export const defaultConfig = {
+// Frozen so consumers can't mutate the shared default shape. Nested objects
+// are frozen too; route compilation always spreads (…defaultConfig, …user)
+// into a fresh object, so freezing doesn't block normal use.
+export const defaultConfig = Object.freeze({
 	// global
 	cachePrefix: "sw-",
 	skipWaiting: true,
 
 	// installEvent
 	// { ...Route, routes:Route[] }
-	precache: {
-		routes: [], // path[]
+	precache: Object.freeze({
+		routes: Object.freeze([]), // path[]
 		strategy: strategyNetworkFirst,
 		eventType: false,
 		postMessage: postMessageToFocused,
-	},
+	}),
 
 	// activateEvent
-	activate: {
+	activate: Object.freeze({
 		eventType: false,
 		postMessage: postMessageToAll,
-	},
+	}),
 
 	// fetchEvent
 	// Route
-	methods: [],
+	methods: Object.freeze([]),
 	pathPattern: pathPattern(".*$"),
 	strategy: strategyNetworkOnly,
 	// requestMiddlware: [],
@@ -37,8 +40,8 @@ export const defaultConfig = {
 	cacheControlMaxAge: -1, // -1 = disable
 
 	// Route[]
-	routes: [],
-};
+	routes: Object.freeze([]),
+});
 
 const assertArray = (field, value) => {
 	if (value !== undefined && !Array.isArray(value)) {
@@ -77,5 +80,3 @@ export const compileConfig = (config = {}) => {
 
 	return baseConfig;
 };
-
-export { compileRoute } from "./route.js";

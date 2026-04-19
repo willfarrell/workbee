@@ -139,6 +139,14 @@ describe("lib/config", () => {
 		expect(compileConfig({})).type.toBe<WorkBeeConfig>();
 	});
 
+	test("compileRoute returns RouteConfig", async () => {
+		const { compileRoute } = await import("@work-bee/core");
+		expect(
+			compileRoute({} as RouteConfig, { path: "/x" }),
+		).type.toBe<RouteConfig>();
+		expect(compileRoute({} as RouteConfig, "/x")).type.toBe<RouteConfig>();
+	});
+
 	test("compileConfig accepts a user-facing partial config", () => {
 		expect(
 			compileConfig({
@@ -260,9 +268,7 @@ describe("lib/http", () => {
 
 	test("newResponse returns Response", () => {
 		expect(newResponse({})).type.toBe<Response>();
-		expect(
-			newResponse({ status: 200, url: "http://example.com", body: null }),
-		).type.toBe<Response>();
+		expect(newResponse({ status: 200, body: null })).type.toBe<Response>();
 	});
 
 	test("addHeaderToResponse returns Response", () => {

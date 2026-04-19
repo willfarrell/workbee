@@ -44,5 +44,12 @@ export const resolveMiddlewares = (cfg) => {
 
 export const compileRoute = (parent, raw) => {
 	if (typeof raw === "string") raw = { path: raw };
-	return resolveMiddlewares({ ...pick(parent, routeInheritKeys), ...raw });
+	const merged = resolveMiddlewares({
+		...pick(parent, routeInheritKeys),
+		...raw,
+	});
+	// A per-route empty `methods` would silently never match in findRouteConfig.
+	// Default to GET so a bare `{ path }` Just Works.
+	if (!merged.methods?.length) merged.methods = ["GET"];
+	return merged;
 };

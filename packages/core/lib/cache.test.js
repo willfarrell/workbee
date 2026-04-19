@@ -220,6 +220,37 @@ test("cache", async (t) => {
 		},
 	);
 
+	await t.test(
+		"cachePut: reopens the cache when the cached reference is stale (caches.has === false)",
+		async (tt) => {
+			const stalePutFn = mock.fn(() => {
+				throw new Error("should not be called");
+			});
+			openCaches["stale-cache"] = { put: stalePutFn };
+
+			const freshPutFn = mock.fn();
+			const freshCache = { put: freshPutFn };
+
+			const originalHas = globalThis.caches.has;
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.has = () => Promise.resolve(false);
+			globalThis.caches.open = () => Promise.resolve(freshCache);
+			tt.after(() => {
+				delete openCaches["stale-cache"];
+				globalThis.caches.has = originalHas;
+				globalThis.caches.open = originalOpen;
+			});
+
+			const request = new Request("http://localhost:8080/test");
+			const response = new Response("body", { status: 200 });
+			await cachePut("stale-cache", request, response);
+
+			equal(stalePutFn.mock.callCount(), 0);
+			equal(freshPutFn.mock.callCount(), 1);
+			equal(openCaches["stale-cache"], freshCache);
+		},
+	);
+
 	// *** cachePut QuotaExceededError retry *** //
 	await t.test(
 		"cachePut: should retry after QuotaExceededError by deleting expired from same cache",

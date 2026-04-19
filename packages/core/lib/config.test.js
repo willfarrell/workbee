@@ -315,6 +315,18 @@ test("config", async (t) => {
 		},
 	);
 
+	await t.test("defaultConfig: top-level is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig), true);
+	});
+
+	await t.test("defaultConfig: nested precache is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig.precache), true);
+	});
+
+	await t.test("defaultConfig: nested activate is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig.activate), true);
+	});
+
 	await t.test("compileConfig: custom config should override defaults", () => {
 		const config = compileConfig({
 			cachePrefix: "custom-",

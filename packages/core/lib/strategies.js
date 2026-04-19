@@ -109,8 +109,8 @@ export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	return response;
 };
 
-export const strategyIgnore = async (request) => {
-	return newResponse({ status: 504, url: request.url });
+export const strategyIgnore = async () => {
+	return newResponse({ status: 504 });
 };
 
 export const strategyCacheFirstIgnore = async (request, event, config) => {
@@ -162,23 +162,34 @@ export const strategyPartition = (options = {}) => {
 		// If the caller supplied composite headers (fast path), return the
 		// streaming Response immediately. Otherwise await the first sub-response
 		// so its headers can seed the composite — other sub-requests continue
-		// in parallel while that resolves.
+		// in parallel while that resolves. If the first sub-response rejects we
+		// can't build a meaningful composite, so cancel the rest and surface
+		// the error upfront instead of returning a 200-with-broken-stream.
 		let headers = options.headers;
 		if (headers === undefined) {
+			let first;
 			try {
-				const first = await responses[0];
-				headers = first.headers;
-				responses[0] = Promise.resolve(first);
+				first = await responses[0];
 			} catch (e) {
-				responses[0] = Promise.reject(e);
+				first = e;
 			}
+			// fetchInlineStrategy returns Errors instead of throwing them (after-
+			// middleware can reshape errors into responses). Treat a non-Response
+			// first sub-response as a hard failure for the composite.
+			if (!isResponse(first)) {
+				abortController.abort();
+				for (const r of responses) r.catch(() => {});
+				throw first instanceof Error ? first : new Error(String(first));
+			}
+			headers = first.headers;
+			responses[0] = Promise.resolve(first);
 		}
 
 		const { body, streamDeferred } = streamResponses(responses, () =>
 			abortController.abort(),
 		);
 		event.waitUntil(streamDeferred);
-		return newResponse({ url: request.url, body }, headers);
+		return newResponse({ body }, headers);
 	};
 };
 

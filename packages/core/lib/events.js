@@ -22,13 +22,37 @@ const eventInstallWaitUntil = async (event, config) => {
 	} = config.precache;
 	// Use and external config
 	if (typeof routes === "string") {
-		const response = await fetchInlineStrategy(
-			newRequest(routes),
-			event,
-			config.precache,
-		);
-
-		const extracted = await extract(response);
+		const sourceUrl = routes;
+		let response;
+		try {
+			response = await fetchInlineStrategy(
+				newRequest(sourceUrl),
+				event,
+				config.precache,
+			);
+		} catch (e) {
+			throw new Error(
+				`precache: failed to fetch routes from "${sourceUrl}": ${e.message}`,
+				{ cause: e },
+			);
+		}
+		// fetchInlineStrategy returns Errors instead of throwing them; unwrap
+		// so callers get a clear precache-specific failure message.
+		if (response instanceof Error) {
+			throw new Error(
+				`precache: failed to fetch routes from "${sourceUrl}": ${response.message}`,
+				{ cause: response },
+			);
+		}
+		let extracted;
+		try {
+			extracted = await extract(response);
+		} catch (e) {
+			throw new Error(
+				`precache: extract() threw for "${sourceUrl}": ${e.message}`,
+				{ cause: e },
+			);
+		}
 		// Externally-fetched routes may be plain {path} / strings; run them
 		// through the same compilation pipeline as inline routes so each has
 		// flattened middleware arrays and a cacheKey.
@@ -47,7 +71,15 @@ const eventInstallWaitUntil = async (event, config) => {
 
 // TODO move to plugin package
 export const precacheExtractJSON = async (response) => {
-	if (response.headers.get("Content-Type") !== "application/json") return [];
+	const contentType = response.headers.get("Content-Type") ?? "";
+	if (
+		!contentType
+			.split(";")[0]
+			.trim()
+			.toLowerCase()
+			.startsWith("application/json")
+	)
+		return [];
 	const parsed = await response.json();
 	if (!Array.isArray(parsed)) {
 		throw new TypeError(
@@ -108,14 +140,13 @@ export const fetchInlineStrategy = async (request, event, config) => {
 	// process waitUntil inline due to being nested
 	const waitUntils = [];
 	const waitUntil = (promise) => waitUntils.push(promise);
-	const response = await fetchStrategy(
-		request,
-		{
-			...event,
-			waitUntil,
-		},
-		config,
-	);
+	// `Object.create(event, …)` preserves inherited accessor properties
+	// (real FetchEvent exposes request/clientId/etc. via prototype accessors
+	// that would be lost by `{ ...event }` spread).
+	const inlineEvent = Object.create(event, {
+		waitUntil: { value: waitUntil, enumerable: true },
+	});
+	const response = await fetchStrategy(request, inlineEvent, config);
 	await Promise.all(waitUntils);
 	return response;
 };
@@ -148,14 +179,14 @@ export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 		if (!sourceUrl) return;
 		const origin = new URL(sourceUrl).origin;
 		if (!allowedOrigins.includes(origin)) return;
-		const data = messageEvent?.data ?? messageEvent;
-		let { request, response } = data;
+		if (!messageEvent?.data) return;
+		let { request, response } = messageEvent.data;
 		if (typeof request === "string") {
 			request = newRequest(request);
 		}
 		const routeConfig = findRouteConfig(config, request);
 		if (typeof response === "string") {
-			response = newResponse({ url: request.url, body: response });
+			response = newResponse({ body: response });
 		}
 		return cachePut(routeConfig.cacheKey, request, response);
 	};

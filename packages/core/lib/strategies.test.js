@@ -23,6 +23,11 @@ import {
 
 // Strategies
 test("Strategies", async (t) => {
+	// Every sub-test calls setupMocks which writes to openCaches["sw-default"].
+	// Clean it after each so a failing test doesn't leak its mock into the next.
+	t.afterEach(() => {
+		delete openCaches["sw-default"];
+	});
 	// *** strategyNetworkOnly *** //
 	await t.test(
 		"strategyNetworkOnly: Should resolve 200 from network",
@@ -995,7 +1000,9 @@ test("Strategies", async (t) => {
 			await Promise.all(waitUntils);
 
 			equal(response.status, 200);
-			equal(response.url, `${domain}/200`);
+			// Response.url is "" for synthesized Responses per Fetch spec;
+			// partition composites can't legitimately carry a URL.
+			equal(response.url, "");
 		},
 	);
 
@@ -1176,7 +1183,7 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
-		"strategyPartition: Should reject streamDeferred when sub-response fails",
+		"strategyPartition: stream/streamDeferred rejects when sub-response fails (options.headers supplied)",
 		async (_t) => {
 			const { strategyPartition } = await import("../index.js");
 			const waitUntils = [];
@@ -1184,9 +1191,56 @@ test("Strategies", async (t) => {
 				__request: new Request(`${domain}/200`, { method: "GET" }),
 				waitUntil: (fct) => waitUntils.push(fct),
 			};
-			// Create a partition where the route strategy fails
 			const failingStrategy = () => {
 				throw new Error("sub-response failed");
+			};
+			const { config } = setupMocks(
+				strategyPartition({
+					...compileConfig({
+						routes: [{ path: "$1/fail" }],
+						strategy: failingStrategy,
+						middlewares: [],
+					}),
+					// Supplying headers skips the upfront await-first-response path,
+					// so the failure must surface via the stream itself.
+					headers: new Headers({ "Content-Type": "text/html" }),
+				}),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			let streamCaught = false;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch {
+				streamCaught = true;
+			}
+			equal(streamCaught, true);
+			let deferredCaught = false;
+			try {
+				await Promise.all(waitUntils);
+			} catch {
+				deferredCaught = true;
+			}
+			equal(deferredCaught, true);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: surfaces first-sub-response failure as a thrown error when no options.headers",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const failingStrategy = () => {
+				throw new Error("first sub failed");
 			};
 			const { config } = setupMocks(
 				strategyPartition(
@@ -1199,27 +1253,9 @@ test("Strategies", async (t) => {
 			);
 			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
 
-			const response = await fetchStrategy(event.__request, event, config);
-			// Read stream — should error because sub-response has no arrayBuffer()
-			let streamCaught = false;
-			try {
-				const reader = response.body.getReader();
-				while (true) {
-					const { done } = await reader.read();
-					if (done) break;
-				}
-			} catch {
-				streamCaught = true;
-			}
-			equal(streamCaught, true);
-			// streamDeferred should also reject
-			let deferredCaught = false;
-			try {
-				await Promise.all(waitUntils);
-			} catch {
-				deferredCaught = true;
-			}
-			equal(deferredCaught, true);
+			const result = await fetchStrategy(event.__request, event, config);
+			strictEqual(result instanceof Error, true);
+			strictEqual(/first sub failed/.test(result.message), true);
 		},
 	);
 

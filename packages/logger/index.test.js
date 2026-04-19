@@ -262,6 +262,24 @@ test("loggerMiddleware: Default logger should exercise redactHeaderValues and co
 	deepEqual(outputResponse, response);
 });
 
+test("loggerMiddleware: Default logger falls back to 'custom' when strategy has no name", async (t) => {
+	const logMock = t.mock.method(console, "log", () => {});
+	const request = new Request(`${domain}/200`, { method: "GET" });
+	const logger = loggerMiddleware();
+	const { event, config } = setupMocks(undefined, `${domain}/200`);
+	// Anonymous strategy — a real example is what strategyStatic() returns.
+	config.strategy = (
+		() => async () =>
+			new Response("")
+	)();
+
+	await logger.before(request, event, config);
+
+	equal(logMock.mock.callCount(), 1);
+	const [, , strategyName] = logMock.mock.calls[0].arguments;
+	equal(strategyName, "custom");
+});
+
 test("loggerMiddleware: Default logger with no redactHeaders should skip redaction", async (t) => {
 	t.mock.method(console, "log", () => {});
 	const request = new Request(`${domain}/200`, {

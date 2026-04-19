@@ -8,6 +8,15 @@ import {
 } from "../packages/core/index.js";
 
 const { caches } = makeServiceWorkerEnv();
+// Tests frequently stub `openCaches[key] = mock` directly. getCache in
+// cache.js now calls `caches.has(key)` to detect stale references; without
+// this shim those stubs would be discarded as "stale". Keep `caches.has`
+// truthy for any key tests registered on openCaches.
+const originalHas = caches.has.bind(caches);
+caches.has = async (key) => {
+	if (openCaches[key]) return true;
+	return originalHas(key);
+};
 
 export const cachesOverride = caches;
 export const documentOverride = {
