@@ -28,27 +28,30 @@ const safePath = /^[A-Za-z0-9_./-]*$/;
 
 export const handler = (req, res) => {
 	const urlPath = decodeURIComponent(req.url.split("?")[0]);
-	const [rootDir, rawSub] = urlPath.startsWith(PACKAGES_PREFIX)
+	const [rootDir, rawInput] = urlPath.startsWith(PACKAGES_PREFIX)
 		? [PACKAGES_ROOT, urlPath.slice(PACKAGES_PREFIX.length)]
 		: [ROOT, urlPath.replace(/^\/+/, "")];
+	const rawSub = rawInput === "" ? "index.html" : rawInput;
 	if (!safePath.test(rawSub) || rawSub.split("/").includes("..")) {
 		res.writeHead(403).end();
 		return;
 	}
 	let filePath = resolve(rootDir, rawSub);
-	if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
+	if (!filePath.startsWith(rootDir + sep)) {
 		res.writeHead(403).end();
 		return;
 	}
 	try {
 		const stat = statSync(filePath);
-		if (stat.isDirectory()) filePath = join(filePath, "index.html");
+		if (stat.isDirectory()) {
+			filePath = join(filePath, "index.html");
+			if (!filePath.startsWith(rootDir + sep)) {
+				res.writeHead(403).end();
+				return;
+			}
+		}
 	} catch {
 		res.writeHead(404).end();
-		return;
-	}
-	if (!filePath.startsWith(rootDir + sep)) {
-		res.writeHead(403).end();
 		return;
 	}
 	const headers = {
