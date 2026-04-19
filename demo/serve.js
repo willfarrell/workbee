@@ -3,7 +3,7 @@
 // Minimal static file server for the demo, used by the Playwright e2e tests.
 import { createReadStream, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("./static/", import.meta.url)));
@@ -21,18 +21,22 @@ const mime = {
 	".png": "image/png",
 };
 
-const isInside = (rootDir, candidate) => {
-	const rel = relative(rootDir, candidate);
-	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
-};
+// Allowlist: path segments may only contain letters, digits, `_`, `-`, `.`,
+// and `/` separators. Rejects `..`, null bytes, backslashes, and anything
+// else that could escape the root. Applied before any fs operation.
+const safePath = /^[A-Za-z0-9_./-]*$/;
 
 export const handler = (req, res) => {
 	const urlPath = decodeURIComponent(req.url.split("?")[0]);
-	const [rootDir, subPath] = urlPath.startsWith(PACKAGES_PREFIX)
+	const [rootDir, rawSub] = urlPath.startsWith(PACKAGES_PREFIX)
 		? [PACKAGES_ROOT, urlPath.slice(PACKAGES_PREFIX.length)]
 		: [ROOT, urlPath.replace(/^\/+/, "")];
-	let filePath = resolve(rootDir, subPath);
-	if (!isInside(rootDir, filePath) && filePath !== rootDir) {
+	if (!safePath.test(rawSub) || rawSub.split("/").includes("..")) {
+		res.writeHead(403).end();
+		return;
+	}
+	let filePath = resolve(rootDir, rawSub);
+	if (filePath !== rootDir && !filePath.startsWith(rootDir + sep)) {
 		res.writeHead(403).end();
 		return;
 	}
@@ -43,7 +47,7 @@ export const handler = (req, res) => {
 		res.writeHead(404).end();
 		return;
 	}
-	if (!isInside(rootDir, filePath)) {
+	if (!filePath.startsWith(rootDir + sep)) {
 		res.writeHead(403).end();
 		return;
 	}

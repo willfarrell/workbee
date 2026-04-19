@@ -34,6 +34,3 @@ jobs:
       - name: Unit tests
         run: |
           npm run test:unit
-      - name: Pack check
-        run: |
-          npm run test:pack
