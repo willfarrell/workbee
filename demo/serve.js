@@ -45,13 +45,13 @@ export const handler = (req, res) => {
 		const stat = statSync(filePath);
 		if (stat.isDirectory()) {
 			filePath = join(filePath, "index.html");
-			if (!filePath.startsWith(rootDir + sep)) {
-				res.writeHead(403).end();
-				return;
-			}
 		}
 	} catch {
 		res.writeHead(404).end();
+		return;
+	}
+	if (!filePath.startsWith(rootDir + sep)) {
+		res.writeHead(403).end();
 		return;
 	}
 	const headers = {
