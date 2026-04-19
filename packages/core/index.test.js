@@ -74,6 +74,7 @@ test("core: exports strategy utilities", () => {
 	ok("strategyNetworkFirst" in core);
 	ok("strategyCacheFirst" in core);
 	ok("strategyStaleWhileRevalidate" in core);
+	ok("strategyStaleIfError" in core);
 	ok("strategyIgnore" in core);
 	ok("strategyCacheFirstIgnore" in core);
 	ok("strategyStatic" in core);

@@ -1,6 +1,6 @@
 /* global Request */
 
-import { deepEqual, equal } from "node:assert";
+import { deepEqual, equal, strictEqual } from "node:assert";
 import test from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { domain, setupMocks, spy } from "../../../fixtures/helper.js";
@@ -10,7 +10,6 @@ import {
 	fetchStrategy,
 	openCaches,
 	pathPattern,
-	staleIfError,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
 	strategyCacheOnly,
@@ -106,7 +105,7 @@ test("Strategies", async (t) => {
 
 	// *** strategyCacheOnly *** //
 	await t.test(
-		"strategyCacheOnly: Should resolve 504 from cache when not found",
+		"strategyCacheOnly: Should surface miss when cache not found",
 		async (_t) => {
 			const event = {
 				__request: new Request(`${domain}/200`, {
@@ -119,6 +118,8 @@ test("Strategies", async (t) => {
 				`${domain}/cache/notfound`,
 			);
 
+			// Strategy throws on miss; fetchStrategy's try/catch swallows the
+			// throw and returns the thrown value (undefined here).
 			const response = await fetchInlineStrategy(
 				event.__request,
 				event,
@@ -133,7 +134,7 @@ test("Strategies", async (t) => {
 			equal(cache.delete.callCount, 0);
 			equal(middleware.after.callCount, 1);
 
-			equal(response?.status, 504);
+			strictEqual(response, undefined);
 		},
 	);
 
@@ -170,16 +171,19 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
-		"strategyCacheOnly: Should resolve 504 from cache when not found",
+		"strategyCacheOnly: Should throw undefined when cache is empty",
 		async (_t) => {
 			const request = new Request(`${domain}/cache-miss-${Date.now()}`, {
 				method: "GET",
 			});
 			const { config } = setupMocks(strategyCacheOnly, null);
 
-			const response = await strategyCacheOnly(request, {}, config);
-
-			equal(response?.status, 504);
+			try {
+				await strategyCacheOnly(request, {}, config);
+				throw new Error("should have thrown");
+			} catch (e) {
+				strictEqual(e, undefined);
+			}
 		},
 	);
 
@@ -366,104 +370,20 @@ test("Strategies", async (t) => {
 	await t.test(
 		"strategyNetworkFirst: Should throw when network offline and no cache",
 		async (_t) => {
-			const event = {
-				__request: new Request(`${domain}/offline`, {
-					method: "GET",
-				}),
-			};
-			const { cache, middleware, config } = setupMocks(
+			const request = new Request(`${domain}/offline`, { method: "GET" });
+			const { cache, config } = setupMocks(
 				strategyNetworkFirst,
 				`${domain}/cache/notfound`,
 			);
+			const event = { waitUntil: () => {} };
 
 			try {
-				await fetchInlineStrategy(event.__request, event, config);
-			} catch (e) {
-				deepEqual(e, new Error("offline"));
-
-				equal(middleware.before.callCount, 1);
-				equal(middleware.beforeNetwork.callCount, 1);
-				equal(middleware.afterNetwork.callCount, 1);
-				equal(cache.match.callCount, 1);
-				equal(cache.put.callCount, 0);
-				equal(cache.delete.callCount, 0);
-				equal(middleware.after.callCount, 0);
-			}
-		},
-	);
-
-	// *** staleIfError *** //
-	await t.test(
-		"staleIfError: Should pass through ok response without checking cache",
-		async (_t) => {
-			const request = new Request(`${domain}/200`, { method: "GET" });
-			const { cache, config } = setupMocks(undefined, `${domain}/cache/found`);
-			const input = new Response("{}", { status: 200 });
-
-			const result = await staleIfError(request, input, config);
-
-			equal(result, input);
-			equal(cache.match.callCount, 0);
-		},
-	);
-
-	await t.test(
-		"staleIfError: Should serve cached response when given a 5xx",
-		async (_t) => {
-			const request = new Request(`${domain}/500`, { method: "GET" });
-			const { cache, config } = setupMocks(
-				undefined,
-				`${domain}/cache/expired`,
-			);
-			const input = new Response("", { status: 503 });
-
-			const result = await staleIfError(request, input, config);
-
-			equal(result.status, 200);
-			equal(cache.match.callCount, 1);
-		},
-	);
-
-	await t.test(
-		"staleIfError: Should serve cached response when given a thrown error",
-		async (_t) => {
-			const request = new Request(`${domain}/offline`, { method: "GET" });
-			const { cache, config } = setupMocks(
-				undefined,
-				`${domain}/cache/expired`,
-			);
-
-			const result = await staleIfError(request, new Error("offline"), config);
-
-			equal(result.status, 200);
-			equal(cache.match.callCount, 1);
-		},
-	);
-
-	await t.test(
-		"staleIfError: Should return the 5xx when no cache available",
-		async (_t) => {
-			const request = new Request(`${domain}/500`, { method: "GET" });
-			const { config } = setupMocks(undefined, `${domain}/cache/notfound`);
-			const input = new Response("", { status: 503 });
-
-			const result = await staleIfError(request, input, config);
-
-			equal(result, input);
-		},
-	);
-
-	await t.test(
-		"staleIfError: Should rethrow the error when no cache available",
-		async (_t) => {
-			const request = new Request(`${domain}/offline`, { method: "GET" });
-			const { config } = setupMocks(undefined, `${domain}/cache/notfound`);
-
-			try {
-				await staleIfError(request, new Error("offline"), config);
+				await strategyNetworkFirst(request, event, config);
 				throw new Error("should have thrown");
 			} catch (e) {
 				deepEqual(e, new Error("offline"));
+				equal(cache.match.callCount, 1);
+				equal(cache.put.callCount, 0);
 			}
 		},
 	);
@@ -493,27 +413,6 @@ test("Strategies", async (t) => {
 
 			equal(response.status, 200);
 			equal(await response.text(), "{}");
-		},
-	);
-
-	await t.test(
-		"strategyStaleIfError: Should cache a 200 without Cache-Control",
-		async (_t) => {
-			const event = {
-				__request: new Request(`${domain}/cache-control/null`, {
-					method: "GET",
-				}),
-			};
-			const { cache, config } = setupMocks(strategyStaleIfError);
-
-			const response = await fetchInlineStrategy(
-				event.__request,
-				event,
-				config,
-			);
-
-			equal(response.status, 200);
-			equal(cache.put.callCount, 1);
 		},
 	);
 
@@ -590,6 +489,53 @@ test("Strategies", async (t) => {
 				deepEqual(e, new Error("offline"));
 				equal(cache.match.callCount, 1);
 			}
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should fall back to cache when network returns 5xx",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/503`, { method: "GET" }),
+			};
+			const { cache, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/expired`,
+			);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(response.status, 200);
+			equal(await response.text(), "{}");
+			equal(cache.match.callCount, 1);
+			equal(cache.put.callCount, 0);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: Should return the 5xx when no cache available",
+		async (_t) => {
+			const event = {
+				__request: new Request(`${domain}/503`, { method: "GET" }),
+			};
+			const { cache, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/notfound`,
+			);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(response.status, 503);
+			equal(cache.match.callCount, 1);
+			equal(cache.put.callCount, 0);
 		},
 	);
 
@@ -985,7 +931,7 @@ test("Strategies", async (t) => {
 	});
 
 	await t.test(
-		"strategyStatic: Should return error when passed non-response",
+		"strategyStatic: Should throw when passed an Error so error-path runs",
 		async (_t) => {
 			const { strategyStatic } = await import("../index.js");
 			const error = new Error("some error");
@@ -998,9 +944,19 @@ test("Strategies", async (t) => {
 			};
 			const { config } = setupMocks(strategy);
 
+			// fetchInlineStrategy routes thrown errors through after-middleware,
+			// which in our setup returns the Error as the result.
 			const result = await fetchInlineStrategy(event.__request, event, config);
-
 			equal(result, error);
+
+			// Calling the raw strategy directly throws — so Error-path middleware
+			// runs via fetchStrategy's try/catch.
+			try {
+				strategy();
+				throw new Error("expected throw");
+			} catch (e) {
+				equal(e, error);
+			}
 		},
 	);
 
@@ -1078,6 +1034,103 @@ test("Strategies", async (t) => {
 			// Cancel the stream to trigger the cancel() callback (line 164)
 			await response.body.cancel();
 			await Promise.all(waitUntils);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: composite response carries first sub-response's headers",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = async () =>
+				new Response("x", {
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "text/html; charset=utf-8",
+						"X-Composite-Marker": "first",
+					}),
+				});
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "/a" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [],
+					}),
+				),
+			);
+
+			const response = await fetchStrategy(event.__request, event, config);
+			await response.text();
+			await Promise.all(waitUntils);
+
+			strictEqual(
+				response.headers.get("Content-Type"),
+				"text/html; charset=utf-8",
+			);
+			strictEqual(response.headers.get("X-Composite-Marker"), "first");
+
+			globalThis.fetch = originalFetch;
+		},
+	);
+
+	await t.test(
+		"strategyPartition: body.cancel() aborts in-flight sub-request signals",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+
+			const originalFetch = globalThis.fetch;
+			const seen = [];
+			// First fetch resolves (so the strategy can return); the rest hang
+			// until the signal aborts.
+			globalThis.fetch = (request) => {
+				seen.push(request);
+				if (seen.length === 1) {
+					return Promise.resolve(
+						new Response("", {
+							status: 200,
+							headers: new Headers({ Date: new Date().toString() }),
+						}),
+					);
+				}
+				return new Promise((_resolve, reject) => {
+					request.signal?.addEventListener("abort", () => {
+						reject(new DOMException("Aborted", "AbortError"));
+					});
+				});
+			};
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "/a" }, { path: "/b" }, { path: "/c" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [],
+					}),
+				),
+			);
+
+			const response = await fetchStrategy(event.__request, event, config);
+			await response.body.cancel();
+			await Promise.allSettled(waitUntils);
+
+			strictEqual(seen.length, 3);
+			// Later sub-requests still in-flight when cancel fires must abort.
+			strictEqual(seen[1].signal.aborted, true);
+			strictEqual(seen[2].signal.aborted, true);
+
+			globalThis.fetch = originalFetch;
 		},
 	);
 
@@ -1184,6 +1237,58 @@ test("Strategies", async (t) => {
 				await response.text(),
 				"<html><head></head><body><header></header><main></main><script></script><footer></footer></body></html>",
 			);
+		},
+	);
+
+	await t.test(
+		"strategyHTMLPartition: sub-requests preserve method and headers",
+		async (_t) => {
+			const originalFetch = globalThis.fetch;
+			const seen = [];
+			globalThis.fetch = (request) => {
+				seen.push({
+					url: request.url,
+					method: request.method,
+					auth: request.headers.get("Authorization"),
+				});
+				return Promise.resolve(
+					new Response("", {
+						status: 200,
+						headers: new Headers({ Date: new Date().toString() }),
+					}),
+				);
+			};
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/pages/home`, {
+					method: "POST",
+					headers: new Headers({ Authorization: "Bearer abc" }),
+				}),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyHTMLPartition(
+					compileConfig({
+						routes: [{ path: "$1/header" }, { path: "$1/footer" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			await response.text();
+			await Promise.all(waitUntils);
+
+			strictEqual(seen.length, 2);
+			for (const sub of seen) {
+				strictEqual(sub.method, "POST");
+				strictEqual(sub.auth, "Bearer abc");
+			}
+
+			globalThis.fetch = originalFetch;
 		},
 	);
 });

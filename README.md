@@ -37,11 +37,11 @@ WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/AP
 
 | Browser | Minimum Version |
 |---------|----------------|
-| Chrome  | 57+            |
-| Edge    | 17+            |
-| Firefox | 58+            |
+| Chrome  | 85+            |
+| Edge    | 85+            |
+| Firefox | 80+            |
 | Safari  | 15.4+          |
-| Opera   | 44+            |
+| Opera   | 71+            |
 
 The `@work-bee/offline` package additionally requires [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (supported in all browsers listed above).
 
@@ -395,7 +395,7 @@ addEventListener('fetch', (event) => {
 
 #### Stale if error
 
-Tries the network; on a thrown error or a 5xx response, serves any cached copy (even expired). Unlike `strategyNetworkFirst`, does not cache successful responses.
+Tries the network, caches successful responses gated by `Cache-Control` max-age, and on a thrown error or 5xx response falls back to any cached copy (even expired). Throws the original error only when both network and cache fail.
 
 ```javascript
 /* eslint-env: serviceworker */
@@ -417,8 +417,6 @@ addEventListener('fetch', (event) => {
   eventFetch(event, config)
 })
 ```
-
-The same behavior is available as the `staleIfError(request, response, config)` helper, which can be composed inside any strategy or middleware that produces a response.
 
 #### [Cache, update and refresh](https://serviceworke.rs/strategy-cache-update-and-refresh.html)
 

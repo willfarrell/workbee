@@ -236,7 +236,9 @@ addEventListener("message", (event) => {
 });
 
 const messageEvents = {
-	cache: cacheOverrideEvent(config),
+	cache: cacheOverrideEvent(config, {
+		allowedOrigins: [self.location.origin],
+	}),
 	online: offline.postMessageEvent,
 };
 

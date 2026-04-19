@@ -76,11 +76,10 @@ const sessionMiddleware = ({
 					authnMethods.includes(request.method) &&
 					authnPathPattern.test(request.url)
 				) {
-					sessionToken = await authnGetToken(response.clone());
-					sessionExpiresInMilliseconds = await authnGetExpiry(
-						response.clone(),
-						sessionToken,
-					);
+					const token = await authnGetToken(response.clone());
+					const expiry = await authnGetExpiry(response.clone(), token);
+					sessionToken = token;
+					sessionExpiresInMilliseconds = expiry;
 					inactivityTimer();
 					sessionTimer();
 					// Remove Authorization from response
@@ -167,23 +166,34 @@ export const getTokenAuthorization = (response) => {
 	return response.headers.get(authorizationHeader)?.split(" ")[1];
 };
 
+const fromBase64Url = (str) =>
+	atob(
+		str.replace(/-/g, "+").replace(/_/g, "/") +
+			"===".slice((str.length + 3) % 4),
+	);
+
 // Parsing-only: extracts expiry from an unverified JWT payload.
 // Does NOT validate the token signature. Use a server-side library for validation.
 export const getExpiryJWT = (_response, token) => {
 	try {
-		const ms = JSON.parse(atob(token.split(".")[1])).exp * 1000 - now();
+		const ms =
+			JSON.parse(fromBase64Url(token.split(".")[1])).exp * 1000 - now();
 		return Number.isFinite(ms) ? ms : 0;
 	} catch {
 		return 0;
 	}
 };
 
-// Parsing-only: extracts expiry from an unverified PASETO footer.
-// Does NOT validate the token signature. Use a server-side library for validation.
+// Parsing-only: extracts expiry from a PASETO footer (the last `.`-separated
+// segment). Does NOT validate the token signature. Reads the last segment so
+// both spec-compliant 4-part (`v.p.payload.footer`) and footer-only 3-part
+// fixtures are handled. Use a server-side library for validation.
 export const getExpiryPaseto = (_response, token) => {
 	try {
+		const segments = token.split(".");
+		const footer = segments[segments.length - 1];
 		const ms =
-			new Date(JSON.parse(atob(token.split(".")[2])).exp).getTime() - now();
+			new Date(JSON.parse(fromBase64Url(footer)).exp).getTime() - now();
 		return Number.isFinite(ms) ? ms : 0;
 	} catch {
 		return 0;

@@ -71,7 +71,7 @@ npx biome check .
 
 Husky runs `npm run git:pre-commit` on every commit, which:
 
-1. `npm run test:lint` — Biome lint on staged files
+1. `npm run git:lint-staged` — Biome lint on staged files
 2. `npm run git:test-staged` — executes `node --test ./packages/*`
 
 The package-wide test step currently runs across every package, so a commit can

@@ -175,6 +175,24 @@ test("cache", async (t) => {
 
 	// *** cacheOverrideEvent *** //
 	await t.test(
+		"cacheOverrideEvent: should throw when allowedOrigins is not provided",
+		async () => {
+			const config = (await import("../index.js")).compileConfig({
+				middlewares: [],
+				routes: [],
+			});
+			let caught;
+			try {
+				cacheOverrideEvent(config);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/allowedOrigins/.test(caught.message), true);
+		},
+	);
+
+	await t.test(
 		"cacheOverrideEvent: should put string request/response into cache",
 		async () => {
 			const putFn = mock.fn();
@@ -186,10 +204,15 @@ test("cache", async (t) => {
 				routes: [],
 			});
 
-			const handler = cacheOverrideEvent(config);
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
 			await handler({
-				request: "http://localhost:8080/test",
-				response: "hello",
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "hello",
+				},
 			});
 
 			equal(putFn.mock.callCount(), 1);
@@ -269,14 +292,47 @@ test("cache", async (t) => {
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body");
 
-			const handler = cacheOverrideEvent(config);
-			await handler({ request, response });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: { request, response },
+			});
 
 			equal(putFn.mock.callCount(), 1);
 
 			delete openCaches["sw-default"];
 		},
 	);
+
+	// *** Concurrent open race *** //
+	await t.test("concurrent cachePut only opens the cache once", async () => {
+		const key = "race-cache";
+		delete openCaches[key];
+
+		const originalOpen = globalThis.caches.open;
+		let openCount = 0;
+		const putFn = mock.fn();
+		globalThis.caches.open = () => {
+			openCount += 1;
+			return new Promise((resolve) =>
+				setTimeout(() => resolve({ put: putFn }), 10),
+			);
+		};
+
+		const req1 = new Request("http://localhost:8080/a");
+		const req2 = new Request("http://localhost:8080/b");
+		const res = new Response("body", { status: 200 });
+
+		await Promise.all([cachePut(key, req1, res), cachePut(key, req2, res)]);
+
+		strictEqual(openCount, 1);
+		equal(putFn.mock.callCount(), 2);
+
+		delete openCaches[key];
+		globalThis.caches.open = originalOpen;
+	});
 
 	// *** cachePut with caches.open *** //
 	await t.test(
@@ -362,36 +418,43 @@ test("cache", async (t) => {
 		delete openCaches["error-cache"];
 	});
 
-	await t.test("cachePut: should give up after retry 2", async () => {
-		const putFn = mock.fn(() => {
-			const err = new DOMException("quota exceeded", "QuotaExceededError");
-			throw err;
-		});
-		const mockCache = { put: putFn };
-		openCaches["quota-cache-2"] = mockCache;
-
-		const originalOpen = globalThis.caches.open;
-		const originalKeys = globalThis.caches.keys;
-		globalThis.caches.open = () =>
-			Promise.resolve({
-				matchAll: () => Promise.resolve([]),
-				delete: mock.fn(),
+	await t.test(
+		"cachePut: should throw QuotaExceededError after final retry",
+		async () => {
+			const putFn = mock.fn(() => {
+				const err = new DOMException("quota exceeded", "QuotaExceededError");
+				throw err;
 			});
-		globalThis.caches.keys = () => Promise.resolve([]);
+			const mockCache = { put: putFn };
+			openCaches["quota-cache-2"] = mockCache;
 
-		const request = new Request("http://localhost:8080/test");
-		const response = new Response("body", { status: 200 });
+			const originalOpen = globalThis.caches.open;
+			const originalKeys = globalThis.caches.keys;
+			globalThis.caches.open = () =>
+				Promise.resolve({
+					matchAll: () => Promise.resolve([]),
+					delete: mock.fn(),
+				});
+			globalThis.caches.keys = () => Promise.resolve([]);
 
-		// Should not throw - gives up silently after retry 2
-		await cachePut("quota-cache-2", request, response);
+			const request = new Request("http://localhost:8080/test");
+			const response = new Response("body", { status: 200 });
 
-		// Called 3 times: initial + retry 0 (deleteExpired same) + retry 1 (deleteExpired all) then retry 2 returns
-		equal(putFn.mock.callCount(), 3);
+			let caught;
+			try {
+				await cachePut("quota-cache-2", request, response);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught?.name, "QuotaExceededError");
+			// initial + retry 0 (same-cache purge) + retry 1 (all-caches purge) = 3.
+			equal(putFn.mock.callCount(), 3);
 
-		delete openCaches["quota-cache-2"];
-		globalThis.caches.open = originalOpen;
-		globalThis.caches.keys = originalKeys;
-	});
+			delete openCaches["quota-cache-2"];
+			globalThis.caches.open = originalOpen;
+			globalThis.caches.keys = originalKeys;
+		},
+	);
 
 	// *** cachesDeleteExpired *** //
 	await t.test(
@@ -519,6 +582,110 @@ test("cache", async (t) => {
 
 			const expiresDate = new Date(result.headers.get("Expires")).getTime();
 			const expected = new Date(date).getTime() + 60 * 1000;
+			equal(expiresDate, expected);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should return response unchanged when no Cache-Control header",
+		async () => {
+			const response = new Response("", {
+				headers: new Headers({ Date: new Date().toString() }),
+			});
+
+			const result = applyExpires(response);
+
+			strictEqual(result, response);
+			strictEqual(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should return response unchanged when max-age=0",
+		async () => {
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=0",
+					Date: new Date().toString(),
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			strictEqual(result, response);
+			strictEqual(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should return response unchanged when Cache-Control has no max-age",
+		async () => {
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "no-cache",
+					Date: new Date().toString(),
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			strictEqual(result, response);
+			strictEqual(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should not overwrite an existing Expires header",
+		async () => {
+			const existingExpires = new Date(Date.now() + 123456).toString();
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=60",
+					Date: new Date().toString(),
+					Expires: existingExpires,
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			strictEqual(result, response);
+			strictEqual(result.headers.get("Expires"), existingExpires);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should fall back to Date.now() when Date header missing",
+		async () => {
+			const before = Date.now();
+			const response = new Response("", {
+				headers: new Headers({ "Cache-Control": "max-age=60" }),
+			});
+
+			const result = applyExpires(response);
+
+			const expiresDate = new Date(result.headers.get("Expires")).getTime();
+			const after = Date.now();
+			// Date.toString() drops milliseconds, allow 1s slop.
+			strictEqual(expiresDate >= before + 60 * 1000 - 1000, true);
+			strictEqual(expiresDate <= after + 60 * 1000, true);
+		},
+	);
+
+	await t.test(
+		"applyExpires: should honor s-maxage the same as max-age",
+		async () => {
+			const date = new Date().toString();
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "s-maxage=120",
+					Date: date,
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			const expiresDate = new Date(result.headers.get("Expires")).getTime();
+			const expected = new Date(date).getTime() + 120 * 1000;
 			equal(expiresDate, expected);
 		},
 	);

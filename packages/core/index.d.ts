@@ -53,13 +53,17 @@ export interface WorkBeeConfig extends RouteConfig {
 	precache: PrecacheConfig;
 	activate: ActivateConfig;
 	routes: RouteConfig[];
+	/** Call skipWaiting() on install. Default: true. */
+	skipWaiting?: boolean;
 }
 
 export interface PrecacheConfig extends RouteConfig {
 	routes: (PrecacheRouteConfig | string)[];
 	eventType: string | false;
-	postMessage: (message: any) => Promise<void>;
-	extract?: (response: Response) => any[] | Promise<any[]>;
+	postMessage: (
+		message: { type: string } & Record<string, unknown>,
+	) => Promise<void>;
+	extract?: (response: Response) => unknown[] | Promise<unknown[]>;
 }
 
 export interface PrecacheRouteConfig extends RouteConfig {
@@ -68,7 +72,9 @@ export interface PrecacheRouteConfig extends RouteConfig {
 
 export interface ActivateConfig {
 	eventType: string | false;
-	postMessage: (message: any) => Promise<void>;
+	postMessage: (
+		message: { type: string } & Record<string, unknown>,
+	) => Promise<void>;
 }
 
 /** Options for partition strategies. */
@@ -84,13 +90,16 @@ export interface PartitionOptions {
 
 export interface PartitionRouteConfig {
 	path: string;
-	[key: string]: any;
+	[key: string]: unknown;
 }
 
 // --- lib/cache.js ---
 
 /** Mutable object tracking opened caches. */
 export const openCaches: Record<string, Cache>;
+
+/** Matches `max-age=N` or `s-maxage=N` in a Cache-Control header. */
+export const cacheControlMaxAgeRegExp: RegExp;
 
 /**
  * Returns `response` with an Expires header computed from Cache-Control
@@ -107,20 +116,17 @@ export function cacheMatch(
 
 /**
  * Returns a handler that overrides cached responses via postMessage events.
- * Pass `allowedOrigins` to have the handler reject cross-origin MessageEvents
- * before touching the cache; otherwise the caller must perform the check.
+ * `allowedOrigins` is required (non-empty string[]); the handler silently
+ * drops any MessageEvent whose source origin isn't in the list, preventing
+ * cross-origin cache poisoning.
  */
 export function cacheOverrideEvent(
 	config: WorkBeeConfig,
-	options?: { allowedOrigins?: string[] },
-): (
-	messageEvent:
-		| { request: string | Request; response: string | Response }
-		| {
-				source?: { url?: string } | null;
-				data: { request: string | Request; response: string | Response };
-		  },
-) => Promise<void>;
+	options: { allowedOrigins: string[] },
+): (messageEvent: {
+	source?: { url?: string } | null;
+	data: { request: string | Request; response: string | Response };
+}) => Promise<void>;
 
 /** Puts a response into the named cache, retrying on quota errors. */
 export function cachePut(
@@ -152,8 +158,43 @@ export function pathPattern(pathPattern: string): RegExp;
 /** Default configuration values. */
 export const defaultConfig: WorkBeeConfig;
 
-/** Compiles a partial configuration into a fully resolved WorkBeeConfig. */
-export function compileConfig(config: Partial<WorkBeeConfig>): WorkBeeConfig;
+/**
+ * User-facing input type for `compileConfig`. Only exposes fields the user is
+ * expected to provide; the internal flattened `before`/`after`/`cacheKey`
+ * arrays are computed by `compileConfig` and should not be supplied directly.
+ */
+export interface UserRouteConfig {
+	cachePrefix?: string;
+	cacheName?: string;
+	cacheControlMaxAge?: number;
+	methods?: string[];
+	strategy?: Strategy;
+	pathPattern?: RegExp;
+	middlewares?: Middleware[];
+}
+
+export interface UserPrecacheConfig extends UserRouteConfig {
+	routes?: (UserPrecacheRouteConfig | string)[];
+	eventType?: string | false;
+	postMessage?: (
+		message: { type: string } & Record<string, unknown>,
+	) => Promise<void>;
+	extract?: (response: Response) => unknown[] | Promise<unknown[]>;
+}
+
+export interface UserPrecacheRouteConfig extends UserRouteConfig {
+	path: string;
+}
+
+export interface UserConfig extends UserRouteConfig {
+	precache?: UserPrecacheConfig;
+	activate?: ActivateConfig;
+	routes?: UserRouteConfig[];
+	skipWaiting?: boolean;
+}
+
+/** Compiles a user-provided configuration into a fully resolved WorkBeeConfig. */
+export function compileConfig(config: UserConfig): WorkBeeConfig;
 
 // --- lib/console.js ---
 
@@ -238,7 +279,13 @@ export function addHeaderToRequest(
 /** Type guard that checks if a value is a Response instance. */
 export function isResponse(value: unknown): value is Response;
 
-/** Creates a new Response with optional status, statusText, url, body, and headers. */
+/**
+ * Creates a new Response with optional status, statusText, url, body, and headers.
+ * Note: the `url` option is set via `Object.defineProperty` because Response.url
+ * is spec-readonly. This works in Node tests and most service worker contexts,
+ * but may not propagate through `respondWith()` in all browsers — verify end-to-end
+ * if you rely on `response.url` downstream.
+ */
 export function newResponse(
 	options: {
 		status?: number;
@@ -283,20 +330,10 @@ export function postMessageToFocused(message: any): Promise<void>;
 // --- lib/strategies.js ---
 
 /**
- * Given a response (or thrown error) from a network fetch, returns any cached
- * copy (even expired) when the response is a failure (5xx or thrown error);
- * otherwise passes the response through. Rethrows when there is no fallback.
- */
-export function staleIfError(
-	request: Request,
-	response: Response | Error,
-	config: RouteConfig,
-): Promise<Response>;
-
-/**
- * Stale-if-error strategy: tries the network; on failure (thrown error or
- * 5xx) falls back to any cached copy (even expired). Unlike networkFirst,
- * does not cache successful responses.
+ * Stale-if-error strategy: tries the network, caches successful responses
+ * gated by Cache-Control max-age, and on a thrown error or 5xx response
+ * falls back to any cached copy (even expired). Throws the original error
+ * only when both network and cache fail.
  */
 export const strategyStaleIfError: Strategy;
 
@@ -321,10 +358,17 @@ export const strategyIgnore: Strategy;
 /** Cache-first-ignore strategy: tries cache, returns 408 if not cached. */
 export const strategyCacheFirstIgnore: Strategy;
 
-/** Returns a strategy that always responds with the given static response or error. */
+/**
+ * Returns a strategy that always responds with the given static Response, or
+ * throws the given Error so error-path middleware runs.
+ */
 export function strategyStatic(response: Response | Error): Strategy;
 
-/** Returns a partition strategy for HTML with URL rewriting. */
+/**
+ * Returns a partition strategy for HTML with URL rewriting. Sub-requests
+ * preserve the original request's method and headers; the request body is
+ * NOT forwarded (typical HTML partition flows are GET/HEAD only).
+ */
 export function strategyHTMLPartition(options?: PartitionOptions): Strategy;
 
 /** Returns a partition strategy that streams multiple sub-responses. */

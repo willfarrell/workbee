@@ -12,7 +12,7 @@
 		".github/**/*",
 		".husky/**/*",
 		"demo/**/*",
-		"fixtures/*",
+		"fixtures/**/*",
 		"CNAME",
 		"commitlint.config.cjs",
 		"playwright.config.js",

@@ -1,6 +1,10 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
+import type {
+	AfterMiddleware,
+	BeforeMiddleware,
+	RouteConfig,
+} from "@work-bee/core";
 
 interface LoggerOptions {
 	logger?: (
@@ -8,7 +12,7 @@ interface LoggerOptions {
 		request: Request,
 		response: Response | undefined,
 		event: ExtendableEvent,
-		config: any,
+		config: RouteConfig,
 		redactHeaders: string[],
 	) => void;
 	redactHeaders?: string[];

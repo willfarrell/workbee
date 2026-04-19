@@ -46,6 +46,7 @@ import {
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 	strategyPartition,
+	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
 	strategyStatic,
 	urlRemoveHash,
@@ -63,6 +64,7 @@ describe("types", () => {
 		expect(strategyNetworkFirst).type.toBeAssignableTo<Strategy>();
 		expect(strategyCacheFirst).type.toBeAssignableTo<Strategy>();
 		expect(strategyStaleWhileRevalidate).type.toBeAssignableTo<Strategy>();
+		expect(strategyStaleIfError).type.toBeAssignableTo<Strategy>();
 		expect(strategyIgnore).type.toBeAssignableTo<Strategy>();
 		expect(strategyCacheFirstIgnore).type.toBeAssignableTo<Strategy>();
 	});
@@ -87,10 +89,12 @@ describe("lib/cache", () => {
 	});
 
 	test("cacheOverrideEvent returns handler function", () => {
-		expect(cacheOverrideEvent({} as WorkBeeConfig)).type.toBe<
+		expect(
+			cacheOverrideEvent({} as WorkBeeConfig, { allowedOrigins: ["x"] }),
+		).type.toBe<
 			(messageEvent: {
-				request: string | Request;
-				response: string | Response;
+				source?: { url?: string } | null;
+				data: { request: string | Request; response: string | Response };
 			}) => Promise<void>
 		>();
 	});

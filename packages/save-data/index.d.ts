@@ -16,7 +16,7 @@ interface SaveDataMiddlewareResult {
 }
 
 declare function saveDataMiddleware(
-	opts: SaveDataOptions,
+	opts?: SaveDataOptions,
 ): SaveDataMiddlewareResult;
 
 export default saveDataMiddleware;

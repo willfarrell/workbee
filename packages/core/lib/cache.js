@@ -3,13 +3,9 @@
 /* global caches */
 
 import { consoleError } from "./console.js";
-import { findRouteConfig } from "./events.js";
-import { addHeaderToResponse, newRequest, newResponse } from "./http.js";
+import { addHeaderToResponse } from "./http.js";
 
 export const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
-export const cacheControlStaleWhileRevalidateRegExp =
-	/(stale-while-revalidate)=([0-9]+)/;
-export const cacheControlStaleIfErrorRegExp = /(stale-if-error)=([0-9]+)/;
 
 export const applyExpires = (response) => {
 	if (response.headers.get("Expires")) return response;
@@ -18,7 +14,8 @@ export const applyExpires = (response) => {
 		?.match(cacheControlMaxAgeRegExp);
 	const maxAge = match ? Number.parseInt(match[2], 10) : 0;
 	if (!maxAge) return response;
-	const responseTime = new Date(response.headers.get("Date")).getTime();
+	const dateHeader = response.headers.get("Date");
+	const responseTime = dateHeader ? new Date(dateHeader).getTime() : Date.now();
 	return addHeaderToResponse(
 		response,
 		"Expires",
@@ -27,45 +24,35 @@ export const applyExpires = (response) => {
 };
 
 export const openCaches = {};
+const inFlightOpens = {};
 
-export const cacheMatch = async (cacheKey, request) => {
-	openCaches[cacheKey] ??= await caches.open(cacheKey);
-	return openCaches[cacheKey].match(request);
+const getCache = (cacheKey) => {
+	if (openCaches[cacheKey]) return openCaches[cacheKey];
+	inFlightOpens[cacheKey] ??= caches.open(cacheKey).then((cache) => {
+		openCaches[cacheKey] = cache;
+		delete inFlightOpens[cacheKey];
+		return cache;
+	});
+	return inFlightOpens[cacheKey];
 };
 
-export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
-	return (messageEvent) => {
-		if (allowedOrigins) {
-			const sourceUrl = messageEvent?.source?.url;
-			if (!sourceUrl) return;
-			const origin = new URL(sourceUrl).origin;
-			if (!allowedOrigins.includes(origin)) return;
-		}
-		const data = messageEvent?.data ?? messageEvent;
-		let { request, response } = data;
-		if (typeof request === "string") {
-			request = newRequest(request);
-		}
-		const routeConfig = findRouteConfig(config, request);
-		if (typeof response === "string") {
-			response = newResponse({ url: request.url, body: response });
-		}
-		return cachePut(routeConfig.cacheKey, request, response);
-	};
+export const cacheMatch = async (cacheKey, request) => {
+	const cache = await getCache(cacheKey);
+	return cache.match(request);
 };
 
 export const cachePut = async (cacheKey, request, response, retry = 0) => {
-	openCaches[cacheKey] ??= await caches.open(cacheKey);
-	const cache = openCaches[cacheKey];
+	const cache = await getCache(cacheKey);
+	let lastError;
 	try {
 		await cache.put(request.url, response.clone());
 		return;
 	} catch (e) {
 		if (e.name !== "QuotaExceededError") {
 			consoleError(e.name, cacheKey, request, response);
-			// TODO postMessage?
 			throw e;
 		}
+		lastError = e;
 	}
 	if (retry === 0) {
 		// Remove expired from same cacheKey
@@ -74,7 +61,7 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
 		// Remove expired from all caches
 		await cachesDeleteExpired();
 	} else {
-		return;
+		throw lastError;
 	}
 	return cachePut(cacheKey, request, response, retry + 1);
 };

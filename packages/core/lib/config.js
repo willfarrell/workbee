@@ -4,10 +4,11 @@ import { postMessageToAll, postMessageToFocused } from "./postMessage.js";
 import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
 
 // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-export const pathPattern = (pathPattern) => new RegExp(pathPattern);
+export const pathPattern = (pattern) => new RegExp(pattern);
 export const defaultConfig = {
 	// global
 	cachePrefix: "sw-",
+	skipWaiting: true,
 
 	// installEvent
 	// { ...Route, routes:Route[] }
@@ -49,85 +50,40 @@ const methods = "methods";
 const strategy = "strategy";
 const middlewares = "middlewares";
 
+const routeInheritKeys = [
+	cachePrefix,
+	cacheName,
+	methods,
+	strategy,
+	middlewares,
+];
+
+const resolveMiddlewares = (cfg) => {
+	cfg.cacheKey = cfg.cachePrefix + cfg.cacheName;
+	cfg.before = flattenMiddleware(before, cfg);
+	cfg.beforeNetwork = flattenMiddleware(beforeNetwork, cfg);
+	cfg.afterNetwork = flattenMiddleware(afterNetwork, cfg).reverse();
+	cfg.after = flattenMiddleware(after, cfg).reverse();
+	return cfg;
+};
+
+const compileRoute = (parent, raw) => {
+	if (typeof raw === "string") raw = { path: raw };
+	return resolveMiddlewares({ ...pick(parent, routeInheritKeys), ...raw });
+};
+
 export const compileConfig = (config) => {
-	const baseConfig = { ...defaultConfig, ...config };
-	baseConfig.cacheKey = baseConfig.cachePrefix + baseConfig.cacheName;
-	baseConfig.before = flattenMiddleware(before, baseConfig);
-	baseConfig.beforeNetwork = flattenMiddleware(beforeNetwork, baseConfig);
-	baseConfig.afterNetwork = flattenMiddleware(
-		afterNetwork,
-		baseConfig,
-	).reverse();
-	baseConfig.after = flattenMiddleware(after, baseConfig).reverse();
-	// baseConfig.requestPlugins = flattenMiddleware('request', baseConfig)
-	// baseConfig.responsePlugins = flattenMiddleware('response', baseConfig)
+	const baseConfig = resolveMiddlewares({ ...defaultConfig, ...config });
+	baseConfig.routes = baseConfig.routes.map((r) => compileRoute(baseConfig, r));
 
-	baseConfig.routes = baseConfig.routes.map((route) => {
-		const routeConfig = {
-			...pick(baseConfig, [
-				cachePrefix,
-				cacheName,
-				methods,
-				strategy,
-				middlewares,
-			]),
-			...route,
-		};
-		routeConfig.cacheKey = routeConfig.cachePrefix + routeConfig.cacheName;
-		routeConfig.before = flattenMiddleware(before, routeConfig);
-		routeConfig.beforeNetwork = flattenMiddleware(beforeNetwork, routeConfig);
-		routeConfig.afterNetwork = flattenMiddleware(
-			afterNetwork,
-			routeConfig,
-		).reverse();
-		routeConfig.after = flattenMiddleware(after, routeConfig).reverse();
-		// routeConfig.requestPlugins = flattenMiddleware('request', routeConfig)
-		// routeConfig.responsePlugins = flattenMiddleware('response', routeConfig)
-		return routeConfig;
-	});
-
-	const precacheConfig = {
+	const precacheConfig = resolveMiddlewares({
 		...defaultConfig.precache,
 		...pick(baseConfig, [cachePrefix, cacheName, middlewares]),
 		...baseConfig.precache,
-	};
-	precacheConfig.cacheKey = baseConfig.cachePrefix + precacheConfig.cacheName;
-	precacheConfig.before = flattenMiddleware(before, precacheConfig);
-	precacheConfig.beforeNetwork = flattenMiddleware(
-		beforeNetwork,
-		precacheConfig,
-	);
-	precacheConfig.afterNetwork = flattenMiddleware(
-		afterNetwork,
-		precacheConfig,
-	).reverse();
-	precacheConfig.after = flattenMiddleware(after, precacheConfig).reverse();
-	// precacheConfig.requestPlugins = flattenMiddleware('request', precacheConfig)
-	// precacheConfig.responsePlugins = flattenMiddleware('response', precacheConfig)
-	precacheConfig.routes = precacheConfig.routes.map((route) => {
-		if (typeof route === "string") route = { path: route };
-		const routeConfig = {
-			...pick(precacheConfig, [
-				cachePrefix,
-				cacheName,
-				methods,
-				strategy,
-				middlewares,
-			]),
-			...route,
-		};
-		routeConfig.cacheKey = routeConfig.cachePrefix + routeConfig.cacheName;
-		routeConfig.before = flattenMiddleware(before, routeConfig);
-		routeConfig.beforeNetwork = flattenMiddleware(beforeNetwork, routeConfig);
-		routeConfig.afterNetwork = flattenMiddleware(
-			afterNetwork,
-			routeConfig,
-		).reverse();
-		routeConfig.after = flattenMiddleware(after, routeConfig).reverse();
-		// routeConfig.requestPlugins = flattenMiddleware('request', routeConfig)
-		// routeConfig.responsePlugins = flattenMiddleware('response', routeConfig)
-		return routeConfig;
 	});
+	precacheConfig.routes = precacheConfig.routes.map((r) =>
+		compileRoute(precacheConfig, r),
+	);
 	baseConfig.precache = precacheConfig;
 
 	return baseConfig;

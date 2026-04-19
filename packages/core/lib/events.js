@@ -1,17 +1,24 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
-import { cachesDelete } from "./cache.js";
+import { cachePut, cachesDelete } from "./cache.js";
 import { consoleError } from "./console.js";
-import { newRequest } from "./http.js";
+import { newRequest, newResponse } from "./http.js";
 
 export const eventInstall = (event, config) => {
 	event.waitUntil(eventInstallWaitUntil(event, config));
-	skipWaiting();
+	if (config.skipWaiting !== false) {
+		skipWaiting();
+	}
 };
 
 const eventInstallWaitUntil = async (event, config) => {
-	let { routes, postMessage, extract, eventType } = config.precache;
+	let {
+		routes,
+		postMessage,
+		extract = precacheExtractJSON,
+		eventType,
+	} = config.precache;
 	// Use and external config
 	if (typeof routes === "string") {
 		const response = await fetchInlineStrategy(
@@ -60,11 +67,16 @@ export const eventFetch = (event, config) => {
 };
 
 const eventFetchRespondWith = async (event, config) => {
-	return fetchStrategy(
+	const result = await fetchStrategy(
 		event.request,
 		event,
 		findRouteConfig(config, event.request),
 	);
+	// fetchStrategy returns Response | Error; convert Error back to a rejection
+	// so `respondWith` falls through to the browser's default handling instead
+	// of silently breaking with a non-Response value.
+	if (result instanceof Error) throw result;
+	return result;
 };
 
 export const findRouteConfig = (config, request) => {
@@ -110,6 +122,31 @@ export const fetchStrategy = async (request, event, config) => {
 		response = await after(request, response, event, config);
 	}
 	return response;
+};
+
+export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
+	if (!Array.isArray(allowedOrigins) || allowedOrigins.length === 0) {
+		throw new Error(
+			"cacheOverrideEvent requires `allowedOrigins` (non-empty string[]) " +
+				"to prevent cache poisoning from untrusted origins.",
+		);
+	}
+	return (messageEvent) => {
+		const sourceUrl = messageEvent?.source?.url;
+		if (!sourceUrl) return;
+		const origin = new URL(sourceUrl).origin;
+		if (!allowedOrigins.includes(origin)) return;
+		const data = messageEvent?.data ?? messageEvent;
+		let { request, response } = data;
+		if (typeof request === "string") {
+			request = newRequest(request);
+		}
+		const routeConfig = findRouteConfig(config, request);
+		if (typeof response === "string") {
+			response = newResponse({ url: request.url, body: response });
+		}
+		return cachePut(routeConfig.cacheKey, request, response);
+	};
 };
 
 export const backgroundFetchSuccessEvent = (event) => {

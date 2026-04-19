@@ -149,6 +149,31 @@ test("events", async (t) => {
 	);
 
 	await t.test(
+		"eventInstall: should NOT call skipWaiting when config.skipWaiting is false",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+
+			const originalSkipWaiting = globalThis.skipWaiting;
+			const skipWaitingFn = mock.fn();
+			globalThis.skipWaiting = skipWaitingFn;
+
+			const config = compileConfig({
+				middlewares: [],
+				skipWaiting: false,
+				precache: { routes: [], eventType: false },
+			});
+
+			eventInstall(event, config);
+			await waitUntilFn.mock.calls[0].arguments[0];
+
+			equal(skipWaitingFn.mock.callCount(), 0);
+
+			globalThis.skipWaiting = originalSkipWaiting;
+		},
+	);
+
+	await t.test(
 		"eventInstall: should postMessage when eventType is set",
 		async () => {
 			const waitUntilFn = mock.fn();
@@ -202,6 +227,46 @@ test("events", async (t) => {
 
 		globalThis.skipWaiting = originalSkipWaiting;
 	});
+
+	await t.test(
+		"eventInstall: string routes should default to precacheExtractJSON when extract is not provided",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+
+			const originalFetch = globalThis.fetch;
+			const fetchFn = mock.fn(() =>
+				Promise.resolve(
+					new Response("[]", {
+						status: 200,
+						headers: new Headers({
+							"Content-Type": "application/json",
+							Date: new Date().toString(),
+						}),
+					}),
+				),
+			);
+			globalThis.fetch = fetchFn;
+
+			const config = compileConfig({
+				middlewares: [],
+				precache: { routes: [], eventType: false },
+			});
+			config.precache.routes = "http://localhost:8080/precache.json";
+
+			eventInstall(event, config);
+			// Before the fix this rejects with TypeError: extract is not a function.
+			await waitUntilFn.mock.calls[0].arguments[0];
+
+			equal(fetchFn.mock.callCount() >= 1, true);
+
+			globalThis.skipWaiting = originalSkipWaiting;
+			globalThis.fetch = originalFetch;
+		},
+	);
 
 	await t.test(
 		"eventInstall: should fetch string routes URL and extract",
@@ -333,6 +398,43 @@ test("events", async (t) => {
 	);
 
 	// *** eventFetch *** //
+	await t.test(
+		"eventFetch: should reject respondWith promise when strategy throws",
+		async () => {
+			let capturedPromise;
+			const request = new Request("http://localhost:8080/test", {
+				method: "GET",
+			});
+			const event = {
+				request,
+				respondWith: (p) => {
+					capturedPromise = p;
+				},
+				waitUntil: mock.fn(),
+			};
+
+			const err = new Error("strategy boom");
+			const config = compileConfig({
+				middlewares: [],
+				strategy: () => {
+					throw err;
+				},
+				routes: [],
+			});
+
+			eventFetch(event, config);
+
+			let caught;
+			try {
+				await capturedPromise;
+			} catch (e) {
+				caught = e;
+			}
+			// Previously resolved with an Error object; now the promise rejects.
+			deepEqual(caught, err);
+		},
+	);
+
 	await t.test("eventFetch: should call respondWith", async () => {
 		const respondWithFn = mock.fn();
 		const request = new Request("http://localhost:8080/200", {

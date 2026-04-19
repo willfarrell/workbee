@@ -20,7 +20,13 @@
 	"files": [
 		"index.js",
 		"index.d.ts",
-		"lib/"
+		"lib/cache.js",
+		"lib/config.js",
+		"lib/console.js",
+		"lib/events.js",
+		"lib/http.js",
+		"lib/postMessage.js",
+		"lib/strategies.js"
 	],
 	"scripts": {
 		"test": "node --test"
