@@ -281,10 +281,16 @@ export function isResponse(value: unknown): value is Response;
 
 /**
  * Creates a new Response with optional status, statusText, url, body, and headers.
- * Note: the `url` option is set via `Object.defineProperty` because Response.url
- * is spec-readonly. This works in Node tests and most service worker contexts,
- * but may not propagate through `respondWith()` in all browsers — verify end-to-end
- * if you rely on `response.url` downstream.
+ *
+ * The `url` option is a Node-test affordance: per the Fetch spec, `Response.url`
+ * is readonly and is only set by the platform on responses produced by `fetch()`
+ * or retrieved from a `Cache`. The option uses `Object.defineProperty` to set
+ * the field in environments (Node, some test harnesses) that would otherwise
+ * leave it empty. In real browsers, synthesized `Response` objects always have
+ * `.url === ""` regardless of this option, and `.clone()` will not preserve
+ * the defineProperty-set value. Production code that reads cached response URLs
+ * should rely on the Cache API (which returns responses with URLs set by the
+ * request key) rather than inspecting `.url` on a synthesized `Response`.
  */
 export function newResponse(
 	options: {

@@ -99,14 +99,14 @@ test("inactivityMiddleware: Should trigger inactivityEvent after requests happen
 	strictEqual(inactivityEvent.mock.callCount(), 1);
 });
 
-test("inactivityMiddleware: Should trigger default inactivityEvent when none provided", async (t) => {
+test("inactivityMiddleware: Should warn via default inactivityEvent when none provided", async (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout"] });
-	t.mock.method(console, "error", () => {});
+	t.mock.method(console, "warn", () => {});
 	const _inactivity = inactivityMiddleware({
 		inactivityAllowedInMin: 15,
 	});
 	t.mock.timers.tick(15 * 60 * 1000 + 1);
-	strictEqual(console.error.mock.callCount(), 1);
+	strictEqual(console.warn.mock.callCount(), 1);
 });
 
 test("inactivityMiddleware: Should trigger inactivityEvent after postMessageEvent happens", async (t) => {

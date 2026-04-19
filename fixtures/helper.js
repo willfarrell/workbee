@@ -169,6 +169,7 @@ export const spy = (fn) => {
 export const setupMocks = (
 	strategy = strategyCacheOnly,
 	cacheMatch = `${domain}/cache/found`,
+	t,
 ) => {
 	const cache = {
 		put: spy(),
@@ -195,7 +196,12 @@ export const setupMocks = (
 		middlewares: [middleware],
 	});
 
-	return { cache, middleware, event, config };
+	const cleanup = () => {
+		delete openCaches["sw-default"];
+	};
+	if (t?.after) t.after(cleanup);
+
+	return { cache, middleware, event, config, cleanup };
 };
 
 export const setupGlobals = () => {

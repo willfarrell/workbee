@@ -1,6 +1,7 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
 import { postMessageToAll, postMessageToFocused } from "./postMessage.js";
+import { compileRoute, pick, resolveMiddlewares } from "./route.js";
 import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
 
 // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
@@ -39,39 +40,6 @@ export const defaultConfig = {
 	routes: [],
 };
 
-// strings
-const before = "before";
-const beforeNetwork = "beforeNetwork";
-const afterNetwork = "afterNetwork";
-const after = "after";
-const cachePrefix = "cachePrefix";
-const cacheName = "cacheName";
-const methods = "methods";
-const strategy = "strategy";
-const middlewares = "middlewares";
-
-const routeInheritKeys = [
-	cachePrefix,
-	cacheName,
-	methods,
-	strategy,
-	middlewares,
-];
-
-const resolveMiddlewares = (cfg) => {
-	cfg.cacheKey = cfg.cachePrefix + cfg.cacheName;
-	cfg.before = flattenMiddleware(before, cfg);
-	cfg.beforeNetwork = flattenMiddleware(beforeNetwork, cfg);
-	cfg.afterNetwork = flattenMiddleware(afterNetwork, cfg).reverse();
-	cfg.after = flattenMiddleware(after, cfg).reverse();
-	return cfg;
-};
-
-export const compileRoute = (parent, raw) => {
-	if (typeof raw === "string") raw = { path: raw };
-	return resolveMiddlewares({ ...pick(parent, routeInheritKeys), ...raw });
-};
-
 const assertArray = (field, value) => {
 	if (value !== undefined && !Array.isArray(value)) {
 		throw new TypeError(
@@ -96,7 +64,7 @@ export const compileConfig = (config = {}) => {
 
 	const precacheConfig = resolveMiddlewares({
 		...defaultConfig.precache,
-		...pick(baseConfig, [cachePrefix, cacheName, middlewares]),
+		...pick(baseConfig, ["cachePrefix", "cacheName", "middlewares"]),
 		...baseConfig.precache,
 	});
 	// A string URL is compiled by events.js after fetching + extract().
@@ -110,19 +78,4 @@ export const compileConfig = (config = {}) => {
 	return baseConfig;
 };
 
-const pick = (originalObject = {}, keysToPick = []) => {
-	const newObject = {};
-	for (const path of keysToPick) {
-		// only supports first level
-		if (originalObject[path] !== undefined) {
-			newObject[path] = originalObject[path];
-		}
-	}
-	return newObject;
-};
-
-const flattenMiddleware = (type, routeConfig) =>
-	(routeConfig.middlewares ?? [])
-		.filter(Boolean)
-		.map((middleware) => middleware[type])
-		.filter(Boolean);
+export { compileRoute } from "./route.js";

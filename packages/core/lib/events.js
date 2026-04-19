@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
 import { cachePut, cachesDelete } from "./cache.js";
-import { compileRoute } from "./config.js";
 import { consoleError } from "./console.js";
 import { newRequest, newResponse } from "./http.js";
+import { compileRoute } from "./route.js";
 
 export const eventInstall = (event, config) => {
 	event.waitUntil(eventInstallWaitUntil(event, config));
@@ -46,9 +46,16 @@ const eventInstallWaitUntil = async (event, config) => {
 };
 
 // TODO move to plugin package
-export const precacheExtractJSON = (response) => {
+export const precacheExtractJSON = async (response) => {
 	if (response.headers.get("Content-Type") !== "application/json") return [];
-	return response.json();
+	const parsed = await response.json();
+	if (!Array.isArray(parsed)) {
+		throw new TypeError(
+			"precacheExtractJSON: expected an array of routes, received " +
+				(parsed === null ? "null" : typeof parsed),
+		);
+	}
+	return parsed;
 };
 
 export const eventActivate = (event, config) => {

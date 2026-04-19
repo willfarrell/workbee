@@ -90,8 +90,25 @@ test("events", async (t) => {
 			const response = new Response("<html></html>", {
 				headers: new Headers({ "Content-Type": "text/html" }),
 			});
-			const result = precacheExtractJSON(response);
+			const result = await precacheExtractJSON(response);
 			deepEqual(result, []);
+		},
+	);
+
+	await t.test(
+		"precacheExtractJSON: throws when JSON body is not an array",
+		async () => {
+			const response = new Response(JSON.stringify({ routes: ["/a"] }), {
+				headers: new Headers({ "Content-Type": "application/json" }),
+			});
+			let caught;
+			try {
+				await precacheExtractJSON(response);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof TypeError, true);
+			strictEqual(/array/.test(caught.message), true);
 		},
 	);
 
@@ -513,7 +530,7 @@ test("events", async (t) => {
 			const response = new Response("<html></html>", {
 				headers: new Headers({ "Content-Type": "text/html" }),
 			});
-			const result = precacheExtractJSON(response);
+			const result = await precacheExtractJSON(response);
 			deepEqual(result, []);
 		},
 	);
@@ -523,6 +540,35 @@ test("events", async (t) => {
 		// consoleError is bound at import time, just verify it doesn't throw
 		backgroundFetchFailEvent({ message: "fail" });
 	});
+
+	// *** setupMocks cleanup *** //
+	await t.test(
+		"setupMocks: returns a cleanup fn that restores openCaches",
+		async () => {
+			const { setupMocks } = await import("../../../fixtures/helper.js");
+			delete openCaches["sw-default"];
+			const { cleanup } = setupMocks();
+			strictEqual("sw-default" in openCaches, true);
+			cleanup();
+			strictEqual("sw-default" in openCaches, false);
+		},
+	);
+
+	await t.test(
+		"setupMocks: auto-registers cleanup when given a test context",
+		async (tt) => {
+			const { setupMocks } = await import("../../../fixtures/helper.js");
+			delete openCaches["sw-default"];
+			let inner;
+			await tt.test("inner", async (iTT) => {
+				setupMocks(undefined, undefined, iTT);
+				inner = openCaches["sw-default"];
+				strictEqual(!!inner, true);
+			});
+			// Inner test finished → its t.after() should have fired.
+			strictEqual(openCaches["sw-default"], undefined);
+		},
+	);
 
 	// *** cacheOverrideEvent *** //
 	await t.test(

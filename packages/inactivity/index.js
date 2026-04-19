@@ -3,7 +3,9 @@
 const defaults = {
 	inactivityAllowedInMin: 15,
 	inactivityEvent: () =>
-		console.error("@work-bee/inactivity inactivityEvent not set"),
+		console.warn(
+			"@work-bee/inactivity: inactivity threshold reached but no `inactivityEvent` callback was provided",
+		),
 };
 
 const inactivityMiddleware = (opts) => {
