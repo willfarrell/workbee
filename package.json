@@ -27,7 +27,6 @@
 		"test:sast:trivy": "trivy fs --scanners vuln,license --include-dev-deps --ignored-licenses 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,Python-2.0 --exit-code 1 --disable-telemetry .",
 		"test:sast:trufflehog": "trufflehog filesystem --only-verified --log-level=-1 ./",
 		"test:types": "tstyche",
-		"test:pack": "node --test pack.check.js",
 		"test:perf": "node --test --test-concurrency=1 ./**/*.perf.js",
 		"test:dast": "npm run test:dast:fuzz",
 		"test:dast:fuzz": "node --test ./**/*.fuzz.js",

@@ -3,11 +3,13 @@
 // Minimal static file server for the demo, used by the Playwright e2e tests.
 import { createReadStream, statSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, normalize } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = new URL("./static/", import.meta.url).pathname;
-const PACKAGES_ROOT = new URL("../packages/", import.meta.url).pathname;
+const ROOT = resolve(fileURLToPath(new URL("./static/", import.meta.url)));
+const PACKAGES_ROOT = resolve(
+	fileURLToPath(new URL("../packages/", import.meta.url)),
+);
 const PACKAGES_PREFIX = "/packages/";
 
 const mime = {
@@ -19,13 +21,18 @@ const mime = {
 	".png": "image/png",
 };
 
+const isInside = (rootDir, candidate) => {
+	const rel = relative(rootDir, candidate);
+	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+};
+
 export const handler = (req, res) => {
 	const urlPath = decodeURIComponent(req.url.split("?")[0]);
 	const [rootDir, subPath] = urlPath.startsWith(PACKAGES_PREFIX)
 		? [PACKAGES_ROOT, urlPath.slice(PACKAGES_PREFIX.length)]
-		: [ROOT, urlPath];
-	let filePath = normalize(join(rootDir, subPath)).replace(/\\/g, "/");
-	if (!filePath.startsWith(rootDir.replace(/\\/g, "/"))) {
+		: [ROOT, urlPath.replace(/^\/+/, "")];
+	let filePath = resolve(rootDir, subPath);
+	if (!isInside(rootDir, filePath) && filePath !== rootDir) {
 		res.writeHead(403).end();
 		return;
 	}
@@ -34,6 +41,10 @@ export const handler = (req, res) => {
 		if (stat.isDirectory()) filePath = join(filePath, "index.html");
 	} catch {
 		res.writeHead(404).end();
+		return;
+	}
+	if (!isInside(rootDir, filePath)) {
+		res.writeHead(403).end();
 		return;
 	}
 	const headers = {

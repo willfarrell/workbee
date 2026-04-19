@@ -109,7 +109,7 @@ export const strategyStaleWhileRevalidate = async (request, event, config) => {
 	return response;
 };
 
-export const strategyIgnore = async () => {
+export const strategyIgnore = async (_request, _event, _config) => {
 	return newResponse({ status: 504 });
 };
 
