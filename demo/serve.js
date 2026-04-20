@@ -1,9 +1,15 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
 // Minimal static file server for the demo, used by the Playwright e2e tests.
-import { createReadStream, readFileSync, statSync } from "node:fs";
+import {
+	closeSync,
+	createReadStream,
+	fstatSync,
+	openSync,
+	readFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
-import { extname, join, resolve, sep } from "node:path";
+import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(fileURLToPath(new URL("./static/", import.meta.url)));
@@ -41,17 +47,26 @@ export const handler = (req, res) => {
 		res.writeHead(403).end();
 		return;
 	}
+	// Resolve the file via a single fd so the stat/read pair cannot race with
+	// an attacker-controlled swap (stat says "file", then read follows a
+	// substituted symlink). Fall back to `${filePath}/index.html` if the target
+	// turns out to be a directory.
+	let fd;
 	try {
-		const stat = statSync(filePath);
-		if (stat.isDirectory()) {
-			filePath = join(filePath, "index.html");
+		fd = openSync(filePath, "r");
+		if (fstatSync(fd).isDirectory()) {
+			closeSync(fd);
+			fd = undefined;
+			filePath = resolve(filePath, "index.html");
+			if (!filePath.startsWith(rootDir + sep)) {
+				res.writeHead(403).end();
+				return;
+			}
+			fd = openSync(filePath, "r");
 		}
 	} catch {
+		if (fd !== undefined) closeSync(fd);
 		res.writeHead(404).end();
-		return;
-	}
-	if (!filePath.startsWith(rootDir + sep)) {
-		res.writeHead(403).end();
 		return;
 	}
 	const headers = {
@@ -63,7 +78,8 @@ export const handler = (req, res) => {
 	// Rewrite bare `@work-bee/*` specifiers in served JS so the browser can
 	// resolve them without a bundler or import map.
 	if (extname(filePath) === ".js" && rootDir === PACKAGES_ROOT) {
-		const source = readFileSync(filePath, "utf8");
+		const source = readFileSync(fd, "utf8");
+		closeSync(fd);
 		const rewritten = source.replace(
 			/(from\s*["'])@work-bee\/([^"']+)(["'])/g,
 			(_, pre, name, post) => `${pre}/packages/${name}/index.js${post}`,
@@ -73,7 +89,7 @@ export const handler = (req, res) => {
 		return;
 	}
 	res.writeHead(200, headers);
-	createReadStream(filePath).pipe(res);
+	createReadStream(null, { fd, autoClose: true }).pipe(res);
 };
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
