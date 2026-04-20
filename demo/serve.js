@@ -1,7 +1,7 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
 // Minimal static file server for the demo, used by the Playwright e2e tests.
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +59,18 @@ export const handler = (req, res) => {
 	};
 	if (urlPath === "/sw.js") {
 		headers["Service-Worker-Allowed"] = "/";
+	}
+	// Rewrite bare `@work-bee/*` specifiers in served JS so the browser can
+	// resolve them without a bundler or import map.
+	if (extname(filePath) === ".js" && rootDir === PACKAGES_ROOT) {
+		const source = readFileSync(filePath, "utf8");
+		const rewritten = source.replace(
+			/(from\s*["'])@work-bee\/([^"']+)(["'])/g,
+			(_, pre, name, post) => `${pre}/packages/${name}/index.js${post}`,
+		);
+		res.writeHead(200, headers);
+		res.end(rewritten);
+		return;
 	}
 	res.writeHead(200, headers);
 	createReadStream(filePath).pipe(res);

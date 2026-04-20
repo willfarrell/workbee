@@ -48,7 +48,6 @@ import {
 	strategyPartition,
 	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
-	strategyStatic,
 } from "../../packages/core/index.js";
 import fallbackMiddleware from "../../packages/fallback/index.js";
 import inactivityMiddleware from "../../packages/inactivity/index.js";
@@ -178,7 +177,7 @@ const config = compileConfig({
 			methods: ["POST"],
 			pathPattern: pathPattern("offlineMiddleware$"),
 			cacheName: "offlineMiddleware",
-			strategy: strategyStatic(new Error("offline")),
+			strategy: strategyNetworkOnly,
 			middlewares: [offline, loggerMiddleware()],
 		},
 		{

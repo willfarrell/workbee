@@ -10,7 +10,8 @@
       if ('serviceWorker' in navigator) {
               const sw = navigator.serviceWorker
               const reg = await sw.register('/sw.js', {
-                /*type: 'module',*/ scope: '/'
+                type: 'module',
+                scope: '/'
               })
 
               sw.addEventListener('message', async (event) => {

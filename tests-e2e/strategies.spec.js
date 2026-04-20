@@ -36,15 +36,12 @@ test.describe("Strategies", () => {
 
 		await awaitServiceWorker(page);
 
-		let responseText;
-		page.on("response", async (response) => {
-			if (response.url().includes("strategyNetworkOnly")) {
-				responseText = await response.text();
-			}
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyNetworkOnly");
+			return { status: response.status, text: await response.text() };
 		});
-
-		await page.evaluate(() => fetch("/strategy/strategyNetworkOnly"));
-		expect(responseText).toBe("network-only-response");
+		expect(result.status).toBe(200);
+		expect(result.text).toBe("network-only-response");
 		await context.close();
 	});
 
@@ -133,26 +130,17 @@ test.describe("Strategies", () => {
 		await context.close();
 	});
 
-	test("strategyIgnore should not intercept request", async ({ browser }) => {
+	test("strategyIgnore should short-circuit with 504", async ({ browser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-
-		await context.route("**/strategy/strategyIgnore", async (route) => {
-			return route.fulfill({
-				contentType: "text/plain",
-				status: 200,
-				body: "ignored-response",
-			});
-		});
 
 		await awaitServiceWorker(page);
 
 		const result = await page.evaluate(async () => {
 			const response = await fetch("/strategy/strategyIgnore");
-			return { status: response.status, text: await response.text() };
+			return { status: response.status };
 		});
-		expect(result.status).toBe(200);
-		expect(result.text).toBe("ignored-response");
+		expect(result.status).toBe(504);
 		await context.close();
 	});
 
@@ -261,6 +249,13 @@ test.describe("Middleware", () => {
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
+
+		// Simulate an offline/unavailable network so the middleware enqueues the
+		// POST and responds 202.
+		await context.route("**/middleware/offlineMiddleware", async (route) => {
+			if (!route.request().serviceWorker()) return route.continue();
+			return route.fulfill({ status: 503, body: "" });
+		});
 
 		await awaitServiceWorker(page);
 
