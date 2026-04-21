@@ -94,6 +94,20 @@ test("getExpiryJWT: Should return 0 when exp is not a number", async (_t) => {
 	strictEqual(Number.isNaN(result), false);
 });
 
+test("getExpiryJWT: Should decode base64url-encoded payloads with - and _", async (_t) => {
+	const exp = Math.floor(Date.now() / 1000) + 3600;
+	// Pick a JSON payload whose standard-base64 encoding contains + or /,
+	// so the base64url variant contains - or _.
+	const payload = btoa(JSON.stringify({ exp, nonce: "?>>?" }))
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/, "");
+	strictEqual(/[-_]/.test(payload), true);
+	const token = `eyJhbGciOiJIUzI1NiJ9.${payload}.signature`;
+	const result = getExpiryJWT(new Response(""), token);
+	strictEqual(result > 0, true);
+});
+
 // --- getExpiryPaseto ---
 test("getExpiryPaseto: Should extract expiry from PASETO footer", async (_t) => {
 	const exp = new Date(Date.now() + 7200 * 1000).toISOString();
@@ -104,6 +118,20 @@ test("getExpiryPaseto: Should extract expiry from PASETO footer", async (_t) => 
 	const response = new Response("");
 	const result = getExpiryPaseto(response, token);
 	// Should be approximately 7200 * 1000 ms (within 1 second tolerance)
+	strictEqual(result > 7199 * 1000, true);
+	strictEqual(result <= 7200 * 1000, true);
+});
+
+test("getExpiryPaseto: Should decode base64url footer on 4-part PASETO", async (_t) => {
+	const exp = new Date(Date.now() + 7200 * 1000).toISOString();
+	const payload = "payload-blob";
+	const footer = btoa(JSON.stringify({ exp, kid: "?>>?" }))
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/, "");
+	strictEqual(/[-_]/.test(footer), true);
+	const token = `v4.public.${payload}.${footer}`;
+	const result = getExpiryPaseto(new Response(""), token);
 	strictEqual(result > 7199 * 1000, true);
 	strictEqual(result <= 7200 * 1000, true);
 });
@@ -686,6 +714,51 @@ test("sessionMiddleware: inactivity prompt should restart timer when user has re
 	strictEqual(promptCalls.length, 0);
 
 	mock.timers.reset();
+});
+
+// --- Atomic token+expiry assignment ---
+test("sessionMiddleware: before should not see sessionToken until expiry resolves", async (_t) => {
+	let resolveExpiry;
+	const expiryPromise = new Promise((resolve) => {
+		resolveExpiry = resolve;
+	});
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "pending-token",
+		authnGetExpiry: () => expiryPromise,
+		postMessage: mock.fn(),
+	});
+
+	const loginRequest = new Request(`${domain}/auth/login`, { method: "POST" });
+	const loginResponse = new Response("{}", {
+		status: 200,
+		headers: new Headers({ Authorization: "Bearer pending-token" }),
+	});
+	const afterNetworkPromise = session.afterNetwork(
+		loginRequest,
+		loginResponse,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	// Let the first await (authnGetToken) settle.
+	await new Promise((resolve) => setImmediate(resolve));
+
+	// before runs between the two awaits — Authorization should NOT be set yet.
+	const midRequest = new Request(`${domain}/api/data`);
+	const mid = session.before(midRequest, {}, {});
+	strictEqual(mid.headers.get("Authorization"), null);
+
+	// Complete the expiry resolution and full commit.
+	resolveExpiry(60000);
+	await afterNetworkPromise;
+
+	// Now the token is live.
+	const lateRequest = new Request(`${domain}/api/data`);
+	const late = session.before(lateRequest, {}, {});
+	strictEqual(late.headers.get("Authorization"), "Bearer pending-token");
+	session.destroy();
 });
 
 // --- Edge case: token with spaces ---

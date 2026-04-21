@@ -36,15 +36,12 @@ test.describe("Strategies", () => {
 
 		await awaitServiceWorker(page);
 
-		let responseText;
-		page.on("response", async (response) => {
-			if (response.url().includes("strategyNetworkOnly")) {
-				responseText = await response.text();
-			}
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyNetworkOnly");
+			return { status: response.status, text: await response.text() };
 		});
-
-		await page.evaluate(() => fetch("/strategy/strategyNetworkOnly"));
-		expect(responseText).toBe("network-only-response");
+		expect(result.status).toBe(200);
+		expect(result.text).toBe("network-only-response");
 		await context.close();
 	});
 
@@ -133,26 +130,115 @@ test.describe("Strategies", () => {
 		await context.close();
 	});
 
-	test("strategyIgnore should not intercept request", async ({ browser }) => {
+	test("strategyIgnore should short-circuit with 504", async ({ browser }) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-
-		await context.route("**/strategy/strategyIgnore", async (route) => {
-			return route.fulfill({
-				contentType: "text/plain",
-				status: 200,
-				body: "ignored-response",
-			});
-		});
 
 		await awaitServiceWorker(page);
 
 		const result = await page.evaluate(async () => {
 			const response = await fetch("/strategy/strategyIgnore");
+			return { status: response.status };
+		});
+		expect(result.status).toBe(504);
+		await context.close();
+	});
+
+	test("strategyStaleWhileRevalidate should serve cached then revalidate", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await context.route(
+			"**/strategy/strategyStaleWhileRevalidate",
+			async (route) => {
+				if (route.request().serviceWorker()) {
+					return route.fulfill({
+						contentType: "text/plain",
+						status: 200,
+						body: "swr-response",
+					});
+				}
+				return route.continue();
+			},
+		);
+
+		await awaitServiceWorker(page);
+		// Precache populates on install; give it a moment.
+		await page.waitForTimeout(500);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyStaleWhileRevalidate");
+			return { status: response.status };
+		});
+		expect(result.status).toBe(200);
+		await context.close();
+	});
+
+	test("strategyStaleIfError should fall back to cache on 5xx", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		let call = 0;
+		await context.route("**/strategy/strategyStaleIfError", async (route) => {
+			if (!route.request().serviceWorker()) return route.continue();
+			call += 1;
+			if (call === 1) {
+				return route.fulfill({
+					contentType: "text/plain",
+					status: 200,
+					headers: { "Cache-Control": "max-age=60" },
+					body: "primed",
+				});
+			}
+			return route.fulfill({ status: 503, body: "" });
+		});
+
+		await awaitServiceWorker(page);
+
+		// Warm the cache with the 200.
+		await page.evaluate(() => fetch("/strategy/strategyStaleIfError"));
+		// Second call hits 503, should serve the cached body.
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyStaleIfError");
 			return { status: response.status, text: await response.text() };
 		});
 		expect(result.status).toBe(200);
-		expect(result.text).toBe("ignored-response");
+		expect(result.text).toBe("primed");
+		await context.close();
+	});
+
+	test("strategyCacheFirstIgnore returns 504 on miss", async ({ browser }) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await awaitServiceWorker(page);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyCacheFirstIgnore");
+			return { status: response.status };
+		});
+		expect(result.status).toBe(504);
+		await context.close();
+	});
+
+	test("strategyHTMLPartition composes a multi-part HTML response", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await awaitServiceWorker(page);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/strategy/strategyHTMLPartition");
+			return { status: response.status, text: await response.text() };
+		});
+		expect(result.status).toBe(200);
+		expect(result.text.length).toBeGreaterThan(0);
 		await context.close();
 	});
 });
@@ -164,6 +250,13 @@ test.describe("Middleware", () => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
+		// Simulate an offline/unavailable network so the middleware enqueues the
+		// POST and responds 202.
+		await context.route("**/middleware/offlineMiddleware", async (route) => {
+			if (!route.request().serviceWorker()) return route.continue();
+			return route.fulfill({ status: 503, body: "" });
+		});
+
 		await awaitServiceWorker(page);
 
 		const result = await page.evaluate(async () => {
@@ -173,6 +266,76 @@ test.describe("Middleware", () => {
 			return { status: response.status };
 		});
 		expect(result.status).toBe(202);
+		await context.close();
+	});
+
+	test("cacheControlMiddleware overrides Cache-Control on response", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await context.route(
+			"**/middleware/cacheControlMiddleware",
+			async (route) => {
+				if (!route.request().serviceWorker()) return route.continue();
+				return route.fulfill({
+					contentType: "text/plain",
+					status: 200,
+					body: "cc",
+				});
+			},
+		);
+
+		await awaitServiceWorker(page);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/middleware/cacheControlMiddleware");
+			return {
+				status: response.status,
+				cacheControl: response.headers.get("Cache-Control"),
+			};
+		});
+		expect(result.status).toBe(200);
+		expect(result.cacheControl).toMatch(/max-age=30/);
+		await context.close();
+	});
+
+	test("fallbackMiddleware serves precached fallback when the route fails", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await awaitServiceWorker(page);
+		// Precache fills on install.
+		await page.waitForTimeout(500);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/middleware/fallbackMiddleware");
+			return { status: response.status };
+		});
+		expect(result.status).toBe(200);
+		await context.close();
+	});
+
+	test("saveDataMiddleware switches strategy when Save-Data header is on", async ({
+		browser,
+	}) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+
+		await awaitServiceWorker(page);
+		await page.waitForTimeout(500);
+
+		const result = await page.evaluate(async () => {
+			const response = await fetch("/middleware/saveDataMiddleware", {
+				headers: { "Save-Data": "on" },
+			});
+			return { status: response.status };
+		});
+		// With Save-Data on, strategy swaps to cacheOnly; precache populated the cache.
+		expect(result.status).toBe(200);
 		await context.close();
 	});
 });

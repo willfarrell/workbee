@@ -40,8 +40,27 @@ test("idbSerializeRequest: serializes a POST request with body and headers", asy
 
 	strictEqual(serialized.method, "POST");
 	strictEqual(serialized.url, `${domain}/200`);
-	strictEqual(serialized.body, '{"key":"value"}');
+	strictEqual(serialized.body.encoding, "text");
+	strictEqual(serialized.body.data, '{"key":"value"}');
 	strictEqual(serialized.headers["content-type"], "application/json");
+});
+
+test("idbSerializeRequest: roundtrips a binary (ArrayBuffer) body", async () => {
+	const bytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3]);
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		headers: new Headers({ "Content-Type": "application/octet-stream" }),
+		body: bytes,
+	});
+
+	const serialized = await idbSerializeRequest(request);
+	const restored = idbDeserializeRequest(serialized);
+	const restoredBytes = new Uint8Array(await restored.arrayBuffer());
+
+	strictEqual(restoredBytes.length, bytes.length);
+	for (let i = 0; i < bytes.length; i++) {
+		strictEqual(restoredBytes[i], bytes[i]);
+	}
 });
 
 test("idbSerializeRequest: preserves all headers (redaction is middleware responsibility)", async () => {
@@ -397,6 +416,90 @@ test("postMessageEvent: dequeues request and calls postMessage with dequeueEvent
 	);
 	strictEqual(dequeueCalls.length, 1);
 	strictEqual(dequeueCalls[0].arguments[0].url, `${domain}/200`);
+	destroy();
+});
+
+// *** multi-item queue drains in order *** //
+test("postMessageEvent: drains multiple queued requests one at a time", async () => {
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		statusCodes: [503],
+	});
+
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	for (const path of ["/200", "/en/200"]) {
+		const request = new Request(`${domain}${path}`, {
+			method: "POST",
+			body: JSON.stringify({ p: path }),
+			headers: { "Content-Type": "application/json" },
+		});
+		await afterNetwork(request, undefined, event, {});
+	}
+	await Promise.all(waitUntils);
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+
+	const fetchCalls = [];
+	const origFetch = globalThis.fetch;
+	globalThis.fetch = (req) => {
+		fetchCalls.push(req.url);
+		return origFetch(req);
+	};
+
+	// Each postMessageEvent drains at most one; call until quiescent.
+	await postMessageEvent();
+	await postMessageEvent();
+	await postMessageEvent();
+
+	strictEqual(fetchCalls.length, 2);
+	globalThis.fetch = origFetch;
+	destroy();
+});
+
+// *** queue empties after successful dequeue *** //
+test("postMessageEvent: queue is empty after successful dequeue", async () => {
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		dequeueEventType: "dequeue",
+		postMessage: postMessageSpy,
+		statusCodes: [503],
+	});
+
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		body: JSON.stringify({ data: "once" }),
+		headers: { "Content-Type": "application/json" },
+	});
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(request, undefined, event, {});
+	await Promise.all(waitUntils);
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+
+	const fetchCalls = [];
+	const origFetch = globalThis.fetch;
+	globalThis.fetch = (req) => {
+		fetchCalls.push(req.url);
+		return origFetch(req);
+	};
+
+	await postMessageEvent();
+	// Second call should find the queue empty → no more fetches
+	await postMessageEvent();
+
+	strictEqual(fetchCalls.length, 1);
+	globalThis.fetch = origFetch;
 	destroy();
 });
 

@@ -6,12 +6,12 @@ import { describe, expect, test } from "tstyche";
 
 describe("fallback", () => {
 	test("returns FallbackMiddlewareResult", () => {
-		const result = fallback({});
+		const result = fallback({ path: "/fallback.html" });
 		expect(result).type.toBe<{ after: AfterMiddleware }>();
 	});
 
 	test("after is AfterMiddleware", () => {
-		const result = fallback({});
+		const result = fallback({ path: "/fallback.html" });
 		expect(result.after).type.toBe<AfterMiddleware>();
 	});
 

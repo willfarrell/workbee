@@ -281,6 +281,52 @@ test("config", async (t) => {
 		},
 	);
 
+	await t.test(
+		"compileConfig: throws a clear error when routes is not an array",
+		() => {
+			let caught;
+			try {
+				compileConfig({ routes: "not-array" });
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof TypeError, true);
+			strictEqual(
+				caught.message,
+				"compileConfig: `routes` must be an array, received string",
+			);
+		},
+	);
+
+	await t.test(
+		"compileConfig: throws a clear error when middlewares is not an array",
+		() => {
+			let caught;
+			try {
+				compileConfig({ middlewares: { not: "array" } });
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof TypeError, true);
+			strictEqual(
+				caught.message,
+				"compileConfig: `middlewares` must be an array, received object",
+			);
+		},
+	);
+
+	await t.test("defaultConfig: top-level is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig), true);
+	});
+
+	await t.test("defaultConfig: nested precache is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig.precache), true);
+	});
+
+	await t.test("defaultConfig: nested activate is frozen", () => {
+		strictEqual(Object.isFrozen(defaultConfig.activate), true);
+	});
+
 	await t.test("compileConfig: custom config should override defaults", () => {
 		const config = compileConfig({
 			cachePrefix: "custom-",

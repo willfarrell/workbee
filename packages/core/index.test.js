@@ -36,9 +36,6 @@ test("core: exports event utilities", () => {
 	ok("findRouteConfig" in core);
 	ok("fetchInlineStrategy" in core);
 	ok("fetchStrategy" in core);
-	ok("periodicSyncEvent" in core);
-	ok("pushEvent" in core);
-	ok("notificationClickEvent" in core);
 	ok("backgroundFetchSuccessEvent" in core);
 	ok("backgroundFetchFailEvent" in core);
 });
@@ -77,6 +74,7 @@ test("core: exports strategy utilities", () => {
 	ok("strategyNetworkFirst" in core);
 	ok("strategyCacheFirst" in core);
 	ok("strategyStaleWhileRevalidate" in core);
+	ok("strategyStaleIfError" in core);
 	ok("strategyIgnore" in core);
 	ok("strategyCacheFirstIgnore" in core);
 	ok("strategyStatic" in core);

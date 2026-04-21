@@ -6,6 +6,13 @@ import { domain, setupMocks } from "../../fixtures/helper.js";
 import { pathPattern, strategyCacheOnly } from "../core/index.js";
 import fallbackMiddleware from "./index.js";
 
+test("fallbackMiddleware: Should throw when path is missing", async (_t) => {
+	const { throws } = await import("node:assert");
+	throws(() => fallbackMiddleware({}), /path/);
+	throws(() => fallbackMiddleware(), /path/);
+	throws(() => fallbackMiddleware({ statusCodes: [404] }), /path/);
+});
+
 test("fallbackMiddleware.after: Should skip the request if ok", async (_t) => {
 	const request = new Request(`${domain}/200`, { method: "GET" });
 	const response = await fetch(request);

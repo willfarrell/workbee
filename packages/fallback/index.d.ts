@@ -3,8 +3,10 @@
 import type { AfterMiddleware, Strategy } from "@work-bee/core";
 
 interface FallbackOptions {
+	/** Required: the fallback resource path (`{status}` is replaced with the
+	 * failed response's status code). */
+	path: string;
 	pathPattern?: RegExp;
-	path?: string;
 	statusCodes?: number[];
 	fallbackStrategy?: Strategy;
 }

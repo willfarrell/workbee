@@ -37,11 +37,11 @@ WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/AP
 
 | Browser | Minimum Version |
 |---------|----------------|
-| Chrome  | 57+            |
-| Edge    | 17+            |
-| Firefox | 58+            |
+| Chrome  | 85+            |
+| Edge    | 85+            |
+| Firefox | 80+            |
 | Safari  | 15.4+          |
-| Opera   | 44+            |
+| Opera   | 71+            |
 
 The `@work-bee/offline` package additionally requires [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (supported in all browsers listed above).
 
@@ -181,6 +181,47 @@ sequenceDiagram
     ServiceWorker->>Network: fetch
 	Network->>ServiceWorker: 200: OK
 	ServiceWorker->>Page: response
+```
+
+### Ignore
+
+Always returns a synthetic `504 Gateway Timeout` response without hitting cache or network. Useful for cheaply short-circuiting a route you do not want the ServiceWorker to handle.
+
+```javascript
+import { strategyIgnore } from '@work-bee/core'
+
+const config = {
+  strategy: strategyIgnore
+}
+```
+
+### Cache First Ignore
+
+Tries the cache; if the entry is missing or expired, returns the same synthetic `504` as `strategyIgnore` instead of hitting the network. Use when you want to serve only primed cache and fail fast otherwise.
+
+```javascript
+import { strategyCacheFirstIgnore } from '@work-bee/core'
+
+const config = {
+  strategy: strategyCacheFirstIgnore
+}
+```
+
+### Static
+
+Returns a pre-built `Response` (cloned on each call) for every request. Passing an `Error` instead makes the strategy reject — the failure flows through the normal error-path middleware.
+
+```javascript
+import { strategyStatic } from '@work-bee/core'
+
+const offlineResponse = new Response('offline', {
+  status: 503,
+  headers: { 'Content-Type': 'text/plain' }
+})
+
+const config = {
+  strategy: strategyStatic(offlineResponse)
+}
 ```
 
 ### StaleWhileRevalidate
@@ -378,6 +419,31 @@ import { strategyStaleWhileRevalidate } from '@work-bee/core'
 
 const config = {
   strategy: strategyStaleWhileRevalidate
+}
+
+addEventListener('install', (event) => {
+  eventInstall(event, config)
+})
+
+addEventListener('activate', (event) => {
+  eventActivate(event, config)
+})
+
+addEventListener('fetch', (event) => {
+  eventFetch(event, config)
+})
+```
+
+#### Stale if error
+
+Tries the network, caches successful responses gated by `Cache-Control` max-age, and on a thrown error or 5xx response falls back to any cached copy (even expired). Throws the original error only when both network and cache fail.
+
+```javascript
+/* eslint-env: serviceworker */
+import { strategyStaleIfError } from '@work-bee/core'
+
+const config = {
+  strategy: strategyStaleIfError
 }
 
 addEventListener('install', (event) => {

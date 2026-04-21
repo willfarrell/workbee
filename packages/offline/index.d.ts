@@ -6,7 +6,17 @@ export interface SerializedRequest {
 	method: string;
 	url: string;
 	headers: Record<string, string>;
-	body: string | null;
+	/**
+	 * Serialized body. `null` for GET/HEAD. Text bodies are stored as
+	 * `{ encoding: "text", data }`; binary bodies as
+	 * `{ encoding: "base64", data }`. A bare string is accepted by
+	 * `idbDeserializeRequest` for backward compatibility.
+	 */
+	body:
+		| null
+		| string
+		| { encoding: "text"; data: string }
+		| { encoding: "base64"; data: string };
 	referrer?: string;
 	referrerPolicy?: string;
 	mode?: string;

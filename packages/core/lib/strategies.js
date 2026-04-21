@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: MIT
 /* global ReadableStream */
 
-import { cacheExpired, cachePut, openCaches } from "./cache.js";
+import { applyExpires, cacheExpired, cacheMatch, cachePut } from "./cache.js";
 import { consoleError } from "./console.js";
 import { fetchInlineStrategy } from "./events.js";
-import {
-	addHeaderToResponse,
-	isResponse,
-	newRequest,
-	newResponse,
-	urlRemoveHash,
-} from "./http.js";
+import { isResponse, newRequest, newResponse, urlRemoveHash } from "./http.js";
 
 export const strategyNetworkOnly = async (request, event, config) => {
 	for (const beforeNetwork of config.beforeNetwork) {
@@ -32,137 +26,183 @@ export const strategyNetworkOnly = async (request, event, config) => {
 	throw response;
 };
 
-export const strategyCacheOnly = async (request, event, config) => {
-	const cache = openCaches[config.cacheKey];
-	if (!cache) return;
-	return cache.match(request);
+export const strategyCacheOnly = async (request, _event, config) => {
+	const response = await cacheMatch(config.cacheKey, request);
+	if (isResponse(response)) {
+		return response;
+	}
+	throw response;
 };
 
-const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
-// const cacheControlStaleWhileRevalidateRegExp = /(stale-while-revalidate)=([0-9]+)/
 export const strategyNetworkFirst = async (request, event, config) => {
 	let response;
 	try {
 		response = await strategyNetworkOnly(request, event, config);
-	} catch (e) {
-		response = await strategyCacheOnly(request, event, config);
-
-		// no cache value
-		if (!response) {
-			throw e;
+		if (response.ok) {
+			response = applyExpires(response);
+			if (response.headers.get("Expires")) {
+				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+			}
 		}
+	} catch (e) {
+		const cachedResponse = await cacheMatch(config.cacheKey, request);
+		if (isResponse(cachedResponse)) {
+			return cachedResponse;
+		}
+		response = e;
+	}
+	if (isResponse(response)) {
 		return response;
 	}
-	if (response.ok) {
-		// Add in Expires header to allow expiry of cache without complex logic
-		const cacheControl = response.headers.get("Cache-Control");
+	throw response;
+};
 
-		const match = cacheControl?.match(cacheControlMaxAgeRegExp);
-		const maxAge = match ? Number.parseInt(match[2], 10) : 0;
-
-		if (maxAge) {
-			const responseTime = new Date(response.headers.get("Date")).getTime();
-			response = addHeaderToResponse(
-				response,
-				"Expires",
-				new Date(responseTime + maxAge * 1000).toString(),
-			);
-
-			event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+export const strategyStaleIfError = async (request, event, config) => {
+	let response;
+	try {
+		response = await strategyNetworkOnly(request, event, config);
+		if (response.ok) {
+			response = applyExpires(response);
+			if (response.headers.get("Expires")) {
+				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+			}
 		}
+		if (500 <= response.status && response.status <= 599) {
+			const cachedResponse = await cacheMatch(config.cacheKey, request);
+			if (isResponse(cachedResponse)) {
+				return cachedResponse;
+			}
+		}
+	} catch (e) {
+		const cachedResponse = await cacheMatch(config.cacheKey, request);
+		if (isResponse(cachedResponse)) {
+			return cachedResponse;
+		}
+		response = e;
 	}
-	return response;
+	if (isResponse(response)) {
+		return response;
+	}
+	throw response;
 };
 
 export const strategyCacheFirst = async (request, event, config) => {
-	let response = await strategyCacheOnly(request, event, config);
+	let response = await cacheMatch(config.cacheKey, request);
 	if (cacheExpired(response)) {
-		// cache expired - spoof undefined to preserve cache in case of network failure
+		// Fall through to network. If the network fails, strategyNetworkFirst
+		// will fall back to the still-cached (stale) response via cacheMatch.
 		response = undefined;
 	}
-	// cache undefined
 	response ??= await strategyNetworkFirst(request, event, config);
 	return response;
 };
 
-// Note: concurrent requests to the same stale URL will each trigger an
-// independent background revalidation. This is a deliberate simplicity
-// trade-off — deduplication would add complexity with minimal benefit since
-// the cache is updated idempotently.
 export const strategyStaleWhileRevalidate = async (request, event, config) => {
-	let response = await strategyCacheOnly(request, event, config);
+	let response = await cacheMatch(config.cacheKey, request);
 	if (cacheExpired(response)) {
 		// cache expired, update in background
 		event.waitUntil(
 			strategyNetworkFirst(request, event, config).catch(consoleError),
 		);
 	}
-	// cache undefined
 	response ??= await strategyNetworkFirst(request, event, config);
 	return response;
 };
 
-export const strategyIgnore = (request, event, config) => {
-	return newResponse({ status: 408, url: request.url });
+export const strategyIgnore = async (_request, _event, _config) => {
+	return newResponse({ status: 504 });
 };
 
 export const strategyCacheFirstIgnore = async (request, event, config) => {
-	let response = await strategyCacheOnly(request, event, config);
+	let response = await cacheMatch(config.cacheKey, request);
 	if (cacheExpired(response)) {
+		// Treat expired entries as a miss and fall through to strategyIgnore
+		// (504) rather than re-fetching, since this strategy never reaches
+		// the network.
 		response = undefined;
 	}
-	response ??= strategyIgnore(request, event, config);
+	response ??= await strategyIgnore(request, event, config);
 	return response;
 };
 
 export const strategyStatic = (response) => {
-	const strategyStatic = (request, event, config) => {
-		// Allow response to be an error
-		return isResponse(response) ? response.clone() : response;
+	return async () => {
+		if (isResponse(response)) return response.clone();
+		throw response;
 	};
-	return strategyStatic;
 };
 
 export const strategyHTMLPartition = (options = {}) => {
-	options.makeRequest = (request, config, routeConfig) => {
+	const makeRequest = (request, config, routeConfig) => {
 		const url = urlRemoveHash(request.url).replace(
 			config.pathPattern,
 			routeConfig.path,
 		);
-		return newRequest(url, { ...request });
+		return newRequest(url, {
+			method: request.method,
+			headers: request.headers,
+		});
 	};
-	return strategyPartition(options);
+	return strategyPartition({ ...options, makeRequest });
 };
 
-// { makeRequest, routes, strategy, ... }
+// { makeRequest, routes, strategy, headers, ... }
 export const strategyPartition = (options = {}) => {
 	return async (request, event, config) => {
+		const abortController = new AbortController();
 		const responses = options.routes.map((routeConfig) => {
 			let subRequest = request;
 			if (options.makeRequest) {
 				subRequest = options.makeRequest(request, config, routeConfig);
 			}
+			subRequest = new Request(subRequest, { signal: abortController.signal });
 			return fetchInlineStrategy(subRequest, event, routeConfig);
 		});
-		const { body, headers, streamDeferred } = streamResponses(responses);
 
+		// If the caller supplied composite headers (fast path), return the
+		// streaming Response immediately. Otherwise await the first sub-response
+		// so its headers can seed the composite — other sub-requests continue
+		// in parallel while that resolves. If the first sub-response rejects we
+		// can't build a meaningful composite, so cancel the rest and surface
+		// the error upfront instead of returning a 200-with-broken-stream.
+		let headers = options.headers;
+		if (headers === undefined) {
+			let first;
+			try {
+				first = await responses[0];
+			} catch (e) {
+				first = e;
+			}
+			// fetchInlineStrategy returns Errors instead of throwing them (after-
+			// middleware can reshape errors into responses). Treat a non-Response
+			// first sub-response as a hard failure for the composite.
+			if (!isResponse(first)) {
+				abortController.abort();
+				for (const r of responses) r.catch(() => {});
+				throw first instanceof Error ? first : new Error(String(first));
+			}
+			headers = first.headers;
+			responses[0] = Promise.resolve(first);
+		}
+
+		const { body, streamDeferred } = streamResponses(responses, () =>
+			abortController.abort(),
+		);
 		event.waitUntil(streamDeferred);
-
-		return newResponse({ url: request.url, body }, headers);
+		return newResponse({ body }, headers);
 	};
 };
 
-const streamResponses = (responses) => {
-	let body, headers;
+const streamResponses = (responses, onCancel) => {
+	let body;
 	const streamDeferred = new Promise((resolve, reject) => {
 		body = new ReadableStream({
 			async pull(controller) {
 				try {
 					if (responses.length) {
 						const response = await responses.shift();
-						headers ??= response.headers;
-						const body = await response.arrayBuffer();
-						controller.enqueue(new Uint8Array(body));
+						const buffer = await response.arrayBuffer();
+						controller.enqueue(new Uint8Array(buffer));
 					} else {
 						controller.close();
 						resolve();
@@ -173,9 +213,10 @@ const streamResponses = (responses) => {
 				}
 			},
 			cancel() {
+				onCancel?.();
 				resolve();
 			},
 		});
 	});
-	return { body, headers, streamDeferred };
+	return { body, streamDeferred };
 };

@@ -22,7 +22,7 @@ const redactHeaderValues = (headers, redactHeaders) => {
 
 const defaults = {
 	logger: (when, request, response, _event, config, redactHeaders) => {
-		consoleLog(when, request.url, config.strategy.name, {
+		consoleLog(when, request.url, config.strategy?.name || "custom", {
 			request,
 			requestHeaders: redactHeaderValues(
 				headersGetAll(request.headers),

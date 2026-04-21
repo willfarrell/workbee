@@ -33,6 +33,18 @@ test("cacheControlMiddleware.afterNetwork: Should override the Cache-Control", a
 	deepEqual(outputResponse, cacheControlResponse);
 });
 
+test("cacheControlMiddleware: Should throw when cacheControl is not a non-empty string", async (_t) => {
+	const { strictEqual, throws } = await import("node:assert");
+	throws(() => cacheControlMiddleware({}), /cacheControl/);
+	throws(() => cacheControlMiddleware({ cacheControl: "" }), /cacheControl/);
+	throws(() => cacheControlMiddleware({ cacheControl: 123 }), /cacheControl/);
+	// Sanity: valid value still works.
+	strictEqual(
+		typeof cacheControlMiddleware({ cacheControl: "no-cache" }).afterNetwork,
+		"function",
+	);
+});
+
 test("cacheControlMiddleware.afterNetwork: Should skip when response is an error", async (_t) => {
 	const request = new Request(`${domain}/offline`, { method: "GET" });
 	const response = new Error("offline");

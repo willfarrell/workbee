@@ -1,23 +1,22 @@
 /* global Request Response Headers */
 
-import { deepEqual, equal } from "node:assert";
+import { deepEqual, equal, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
 import "../../../fixtures/helper.js";
 import {
 	backgroundFetchFailEvent,
 	backgroundFetchSuccessEvent,
+	cacheOverrideEvent,
 	compileConfig,
 	eventActivate,
 	eventFetch,
 	eventInstall,
+	fetchInlineStrategy,
 	fetchStrategy,
 	findRouteConfig,
-	notificationClickEvent,
 	openCaches,
 	pathPattern,
-	periodicSyncEvent,
 	precacheExtractJSON,
-	pushEvent,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 } from "../index.js";
@@ -87,13 +86,44 @@ test("events", async (t) => {
 	);
 
 	await t.test(
+		"precacheExtractJSON: accepts application/json with charset parameter",
+		async () => {
+			const body = JSON.stringify([{ path: "/index.html" }]);
+			const response = new Response(body, {
+				headers: new Headers({
+					"Content-Type": "application/json; charset=utf-8",
+				}),
+			});
+			const result = await precacheExtractJSON(response);
+			deepEqual(result, [{ path: "/index.html" }]);
+		},
+	);
+
+	await t.test(
 		"precacheExtractJSON: should return empty array for non-JSON response",
 		async () => {
 			const response = new Response("<html></html>", {
 				headers: new Headers({ "Content-Type": "text/html" }),
 			});
-			const result = precacheExtractJSON(response);
+			const result = await precacheExtractJSON(response);
 			deepEqual(result, []);
+		},
+	);
+
+	await t.test(
+		"precacheExtractJSON: throws when JSON body is not an array",
+		async () => {
+			const response = new Response(JSON.stringify({ routes: ["/a"] }), {
+				headers: new Headers({ "Content-Type": "application/json" }),
+			});
+			let caught;
+			try {
+				await precacheExtractJSON(response);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof TypeError, true);
+			strictEqual(/array/.test(caught.message), true);
 		},
 	);
 
@@ -146,6 +176,31 @@ test("events", async (t) => {
 
 			// Wait for the promise
 			await waitUntilFn.mock.calls[0].arguments[0];
+
+			globalThis.skipWaiting = originalSkipWaiting;
+		},
+	);
+
+	await t.test(
+		"eventInstall: should NOT call skipWaiting when config.skipWaiting is false",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+
+			const originalSkipWaiting = globalThis.skipWaiting;
+			const skipWaitingFn = mock.fn();
+			globalThis.skipWaiting = skipWaitingFn;
+
+			const config = compileConfig({
+				middlewares: [],
+				skipWaiting: false,
+				precache: { routes: [], eventType: false },
+			});
+
+			eventInstall(event, config);
+			await waitUntilFn.mock.calls[0].arguments[0];
+
+			equal(skipWaitingFn.mock.callCount(), 0);
 
 			globalThis.skipWaiting = originalSkipWaiting;
 		},
@@ -205,6 +260,46 @@ test("events", async (t) => {
 
 		globalThis.skipWaiting = originalSkipWaiting;
 	});
+
+	await t.test(
+		"eventInstall: string routes should default to precacheExtractJSON when extract is not provided",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+
+			const originalFetch = globalThis.fetch;
+			const fetchFn = mock.fn(() =>
+				Promise.resolve(
+					new Response("[]", {
+						status: 200,
+						headers: new Headers({
+							"Content-Type": "application/json",
+							Date: new Date().toString(),
+						}),
+					}),
+				),
+			);
+			globalThis.fetch = fetchFn;
+
+			const config = compileConfig({
+				middlewares: [],
+				precache: { routes: [], eventType: false },
+			});
+			config.precache.routes = "http://localhost:8080/precache.json";
+
+			eventInstall(event, config);
+			// Before the fix this rejects with TypeError: extract is not a function.
+			await waitUntilFn.mock.calls[0].arguments[0];
+
+			equal(fetchFn.mock.callCount() >= 1, true);
+
+			globalThis.skipWaiting = originalSkipWaiting;
+			globalThis.fetch = originalFetch;
+		},
+	);
 
 	await t.test(
 		"eventInstall: should fetch string routes URL and extract",
@@ -336,6 +431,43 @@ test("events", async (t) => {
 	);
 
 	// *** eventFetch *** //
+	await t.test(
+		"eventFetch: should reject respondWith promise when strategy throws",
+		async () => {
+			let capturedPromise;
+			const request = new Request("http://localhost:8080/test", {
+				method: "GET",
+			});
+			const event = {
+				request,
+				respondWith: (p) => {
+					capturedPromise = p;
+				},
+				waitUntil: mock.fn(),
+			};
+
+			const err = new Error("strategy boom");
+			const config = compileConfig({
+				middlewares: [],
+				strategy: () => {
+					throw err;
+				},
+				routes: [],
+			});
+
+			eventFetch(event, config);
+
+			let caught;
+			try {
+				await capturedPromise;
+			} catch (e) {
+				caught = e;
+			}
+			// Previously resolved with an Error object; now the promise rejects.
+			deepEqual(caught, err);
+		},
+	);
+
 	await t.test("eventFetch: should call respondWith", async () => {
 		const respondWithFn = mock.fn();
 		const request = new Request("http://localhost:8080/200", {
@@ -361,21 +493,6 @@ test("events", async (t) => {
 		equal(respondWithFn.mock.callCount(), 1);
 		const response = await respondWithFn.mock.calls[0].arguments[0];
 		equal(response.status, 200);
-	});
-
-	// *** periodicSyncEvent *** //
-	await t.test("periodicSyncEvent: should be callable", () => {
-		periodicSyncEvent({});
-	});
-
-	// *** pushEvent *** //
-	await t.test("pushEvent: should be callable", () => {
-		pushEvent({}, { init: () => {}, shutdown: () => {} });
-	});
-
-	// *** notificationClickEvent *** //
-	await t.test("notificationClickEvent: should be callable", () => {
-		notificationClickEvent({});
 	});
 
 	// *** backgroundFetchSuccessEvent *** //
@@ -428,8 +545,84 @@ test("events", async (t) => {
 			const response = new Response("<html></html>", {
 				headers: new Headers({ "Content-Type": "text/html" }),
 			});
-			const result = precacheExtractJSON(response);
+			const result = await precacheExtractJSON(response);
 			deepEqual(result, []);
+		},
+	);
+
+	await t.test(
+		"precacheExtractJSON: is reachable via @work-bee/core/precache-json subpath",
+		async () => {
+			const mod = await import("../precache-json.js");
+			strictEqual(typeof mod.precacheExtractJSON, "function");
+			const body = JSON.stringify([{ path: "/a" }]);
+			const response = new Response(body, {
+				headers: new Headers({ "Content-Type": "application/json" }),
+			});
+			deepEqual(await mod.precacheExtractJSON(response), [{ path: "/a" }]);
+		},
+	);
+
+	await t.test(
+		"eventInstall: wraps fetch failure with a clearer message",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+
+			const config = compileConfig({
+				middlewares: [],
+				precache: {
+					routes: "http://localhost:8080/offline",
+					eventType: false,
+				},
+			});
+
+			eventInstall(event, config);
+			let caught;
+			try {
+				await waitUntilFn.mock.calls[0].arguments[0];
+			} catch (e) {
+				caught = e;
+			}
+			globalThis.skipWaiting = originalSkipWaiting;
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/precache/i.test(caught.message), true);
+			strictEqual(/failed to fetch/i.test(caught.message), true);
+		},
+	);
+
+	await t.test(
+		"eventInstall: wraps extract() error with a clearer message",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+
+			const config = compileConfig({
+				middlewares: [],
+				precache: {
+					routes: "http://localhost:8080/200",
+					extract: () => {
+						throw new Error("boom");
+					},
+					eventType: false,
+				},
+			});
+
+			eventInstall(event, config);
+			let caught;
+			try {
+				await waitUntilFn.mock.calls[0].arguments[0];
+			} catch (e) {
+				caught = e;
+			}
+			globalThis.skipWaiting = originalSkipWaiting;
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/precache/i.test(caught.message), true);
+			strictEqual(/extract/i.test(caught.message), true);
 		},
 	);
 
@@ -438,4 +631,191 @@ test("events", async (t) => {
 		// consoleError is bound at import time, just verify it doesn't throw
 		backgroundFetchFailEvent({ message: "fail" });
 	});
+
+	// *** fetchInlineStrategy event accessor propagation *** //
+	await t.test(
+		"fetchInlineStrategy: preserves accessor-defined event properties",
+		async () => {
+			const originalRequest = new Request("http://localhost:8080/accessor");
+			// FetchEvent in real browsers exposes request/clientId/etc. as
+			// accessors (no enumerable own properties). Simulate that shape so
+			// the test fails if the implementation uses `{...event}` spread.
+			const eventProto = {};
+			Object.defineProperty(eventProto, "request", {
+				get() {
+					return originalRequest;
+				},
+			});
+			const fetchEvent = Object.create(eventProto);
+
+			let seenRequest;
+			const strategy = (_request, evt) => {
+				seenRequest = evt.request;
+				return new Response("ok", { status: 200 });
+			};
+			const config = compileConfig({
+				middlewares: [],
+				strategy,
+				routes: [],
+			});
+
+			await fetchInlineStrategy(originalRequest, fetchEvent, config);
+
+			strictEqual(seenRequest, originalRequest);
+		},
+	);
+
+	// *** setupMocks cleanup *** //
+	await t.test(
+		"setupMocks: returns a cleanup fn that restores openCaches",
+		async () => {
+			const { setupMocks } = await import("../../../fixtures/helper.js");
+			delete openCaches["sw-default"];
+			const { cleanup } = setupMocks();
+			strictEqual("sw-default" in openCaches, true);
+			cleanup();
+			strictEqual("sw-default" in openCaches, false);
+		},
+	);
+
+	await t.test(
+		"setupMocks: auto-registers cleanup when given a test context",
+		async (tt) => {
+			const { setupMocks } = await import("../../../fixtures/helper.js");
+			delete openCaches["sw-default"];
+			let inner;
+			await tt.test("inner", async (iTT) => {
+				setupMocks(undefined, undefined, iTT);
+				inner = openCaches["sw-default"];
+				strictEqual(!!inner, true);
+			});
+			// Inner test finished → its t.after() should have fired.
+			strictEqual(openCaches["sw-default"], undefined);
+		},
+	);
+
+	// *** cacheOverrideEvent *** //
+	await t.test(
+		"cacheOverrideEvent: should throw when allowedOrigins is not provided",
+		async () => {
+			const config = compileConfig({ middlewares: [], routes: [] });
+			let caught;
+			try {
+				cacheOverrideEvent(config);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/allowedOrigins/.test(caught.message), true);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: should put string request/response into cache",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "hello",
+				},
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should reject cross-origin MessageEvent",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "https://evil.example.com/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "attacker-payload",
+				},
+			});
+			equal(putFn.mock.callCount(), 0);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: with allowedOrigins should accept same-origin MessageEvent",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "trusted",
+				},
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: should handle Request/Response objects",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const request = new Request("http://localhost:8080/test");
+			const response = new Response("body");
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: { request, response },
+			});
+			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: ignores MessageEvent with no data",
+		async (tt) => {
+			const putFn = mock.fn();
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			// No `data` field — a real MessageEvent without a payload must be
+			// dropped rather than treated as `messageEvent` itself.
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				request: "http://localhost:8080/test",
+				response: "attack",
+			});
+			equal(putFn.mock.callCount(), 0);
+		},
+	);
 });

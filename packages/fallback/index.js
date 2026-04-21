@@ -13,6 +13,9 @@ const fallbackMiddleware = ({
 	statusCodes,
 	fallbackStrategy,
 } = {}) => {
+	if (typeof path !== "string" || path.length === 0) {
+		throw new Error("fallbackMiddleware requires a non-empty `path` string.");
+	}
 	const after = async (request, response, event, config) => {
 		if (response?.ok) {
 			return response;

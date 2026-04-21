@@ -46,6 +46,9 @@ node_modules/
 dist
 .svelte-kit/
 
+# Husky runtime (auto-generated)
+.husky/_/
+
 # IDE
 .idea
 *.iml

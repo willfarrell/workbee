@@ -46,6 +46,7 @@ import {
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 	strategyPartition,
+	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
 	strategyStatic,
 	urlRemoveHash,
@@ -63,6 +64,7 @@ describe("types", () => {
 		expect(strategyNetworkFirst).type.toBeAssignableTo<Strategy>();
 		expect(strategyCacheFirst).type.toBeAssignableTo<Strategy>();
 		expect(strategyStaleWhileRevalidate).type.toBeAssignableTo<Strategy>();
+		expect(strategyStaleIfError).type.toBeAssignableTo<Strategy>();
 		expect(strategyIgnore).type.toBeAssignableTo<Strategy>();
 		expect(strategyCacheFirstIgnore).type.toBeAssignableTo<Strategy>();
 	});
@@ -87,10 +89,12 @@ describe("lib/cache", () => {
 	});
 
 	test("cacheOverrideEvent returns handler function", () => {
-		expect(cacheOverrideEvent({} as WorkBeeConfig)).type.toBe<
+		expect(
+			cacheOverrideEvent({} as WorkBeeConfig, { allowedOrigins: ["x"] }),
+		).type.toBe<
 			(messageEvent: {
-				request: string | Request;
-				response: string | Response;
+				source?: { url?: string } | null;
+				data: { request: string | Request; response: string | Response };
 			}) => Promise<void>
 		>();
 	});
@@ -133,6 +137,45 @@ describe("lib/config", () => {
 
 	test("compileConfig returns WorkBeeConfig", () => {
 		expect(compileConfig({})).type.toBe<WorkBeeConfig>();
+	});
+
+	test("compileRoute returns RouteConfig", async () => {
+		const { compileRoute } = await import("@work-bee/core");
+		expect(
+			compileRoute({} as RouteConfig, { path: "/x" }),
+		).type.toBe<RouteConfig>();
+		expect(compileRoute({} as RouteConfig, "/x")).type.toBe<RouteConfig>();
+	});
+
+	test("compileConfig accepts a user-facing partial config", () => {
+		expect(
+			compileConfig({
+				cachePrefix: "v1-",
+				cacheName: "assets",
+				skipWaiting: false,
+				middlewares: [],
+				routes: [
+					{
+						cacheName: "api",
+						pathPattern: /^\/api/,
+						methods: ["GET"],
+					},
+				],
+				precache: {
+					routes: ["/offline.html", { path: "/styles.css" }],
+					eventType: "precache",
+				},
+			}),
+		).type.toBe<WorkBeeConfig>();
+	});
+
+	test("compileConfig rejects internal-only fields", () => {
+		expect(compileConfig).type.not.toBeCallableWith({
+			cacheKey: "computed-internally",
+		});
+		expect(compileConfig).type.not.toBeCallableWith({
+			before: [],
+		});
 	});
 });
 
@@ -225,9 +268,7 @@ describe("lib/http", () => {
 
 	test("newResponse returns Response", () => {
 		expect(newResponse({})).type.toBe<Response>();
-		expect(
-			newResponse({ status: 200, url: "http://example.com", body: null }),
-		).type.toBe<Response>();
+		expect(newResponse({ status: 200, body: null })).type.toBe<Response>();
 	});
 
 	test("addHeaderToResponse returns Response", () => {

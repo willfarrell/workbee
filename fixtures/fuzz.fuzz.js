@@ -112,13 +112,8 @@ test("fuzz: newResponse preserves status and body", () => {
 		.filter((s) => s !== 204 && s !== 205 && s !== 304);
 	fc.assert(
 		fc.property(validStatus, fc.string({ maxLength: 500 }), (status, body) => {
-			const response = newResponse({
-				status,
-				url: "http://localhost:8080/test",
-				body,
-			});
+			const response = newResponse({ status, body });
 			strictEqual(response.status, status);
-			strictEqual(response.url, "http://localhost:8080/test");
 			ok(response.headers.get("date"), "date header set");
 		}),
 		{ numRuns: 200 },
@@ -489,12 +484,16 @@ test("fuzz: idbSerializeRequest/idbDeserializeRequest roundtrip", async () => {
 			async (method, body, headerDict) => {
 				const url = "http://localhost:8080/api/data";
 				const headers = new Headers(headerDict);
+				headers.set("content-type", "text/plain");
 				const request = new Request(url, { method, body, headers });
 
 				const serialized = await idbSerializeRequest(request);
 				strictEqual(serialized.method, method);
 				strictEqual(serialized.url, url);
-				strictEqual(serialized.body, body);
+				if (serialized.body !== null) {
+					strictEqual(serialized.body.encoding, "text");
+					strictEqual(serialized.body.data, body);
+				}
 
 				const restored = idbDeserializeRequest(serialized);
 				strictEqual(restored.method, method);

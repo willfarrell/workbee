@@ -14,12 +14,9 @@ import {
 
 test("perf: strategyIgnore", async () => {
 	const iterations = 100_000;
-	const request = new Request(`${domain}/200`);
-	const event = { waitUntil: () => {} };
-	const { config } = setupMocks(strategyIgnore);
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
-		strategyIgnore(request, event, config);
+		strategyIgnore();
 	}
 	const duration = performance.now() - start;
 	console.log(
@@ -31,12 +28,9 @@ test("perf: strategyStatic", async () => {
 	const iterations = 10_000;
 	const response = new Response("{}", { status: 200 });
 	const strategy = strategyStatic(response);
-	const request = new Request(`${domain}/200`);
-	const event = { waitUntil: () => {} };
-	const { config } = setupMocks(strategy);
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
-		strategy(request, event, config);
+		strategy();
 	}
 	const duration = performance.now() - start;
 	console.log(

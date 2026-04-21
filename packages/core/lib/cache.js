@@ -3,37 +3,63 @@
 /* global caches */
 
 import { consoleError } from "./console.js";
-import { findRouteConfig } from "./events.js";
-import { newRequest, newResponse } from "./http.js";
+import { addHeaderToResponse } from "./http.js";
+
+export const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
+
+export const applyExpires = (response) => {
+	if (response.headers.get("Expires")) return response;
+	const match = response.headers
+		.get("Cache-Control")
+		?.match(cacheControlMaxAgeRegExp);
+	const maxAge = match ? Number.parseInt(match[2], 10) : 0;
+	if (!maxAge) return response;
+	const dateHeader = response.headers.get("Date");
+	const parsedDate = dateHeader ? new Date(dateHeader).getTime() : NaN;
+	const responseTime = Number.isFinite(parsedDate) ? parsedDate : Date.now();
+	return addHeaderToResponse(
+		response,
+		"Expires",
+		new Date(responseTime + maxAge * 1000).toString(),
+	);
+};
 
 export const openCaches = {};
+const inFlightOpens = {};
 
-export const cacheOverrideEvent = (config) => {
-	return (messageEvent) => {
-		let { request, response } = messageEvent;
-		if (typeof request === "string") {
-			request = newRequest(request);
-		}
-		const routeConfig = findRouteConfig(config, request);
-		if (typeof response === "string") {
-			response = newResponse({ url: request.url, body: response });
-		}
-		return cachePut(routeConfig.cacheKey, request, response);
-	};
+const getCache = async (cacheKey) => {
+	// A caller outside cachesDelete() may have dropped this cache from the
+	// CacheStorage; detect the drift and reopen instead of handing back a
+	// stale Cache reference whose writes land nowhere.
+	if (openCaches[cacheKey] && (await caches.has(cacheKey))) {
+		return openCaches[cacheKey];
+	}
+	delete openCaches[cacheKey];
+	inFlightOpens[cacheKey] ??= caches.open(cacheKey).then((cache) => {
+		openCaches[cacheKey] = cache;
+		delete inFlightOpens[cacheKey];
+		return cache;
+	});
+	return inFlightOpens[cacheKey];
+};
+
+export const cacheMatch = async (cacheKey, request) => {
+	const cache = await getCache(cacheKey);
+	return cache.match(request);
 };
 
 export const cachePut = async (cacheKey, request, response, retry = 0) => {
-	openCaches[cacheKey] ??= await caches.open(cacheKey);
-	const cache = openCaches[cacheKey];
+	const cache = await getCache(cacheKey);
+	let lastError;
 	try {
 		await cache.put(request.url, response.clone());
 		return;
 	} catch (e) {
 		if (e.name !== "QuotaExceededError") {
 			consoleError(e.name, cacheKey, request, response);
-			// TODO postMessage?
 			throw e;
 		}
+		lastError = e;
 	}
 	if (retry === 0) {
 		// Remove expired from same cacheKey
@@ -42,7 +68,7 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
 		// Remove expired from all caches
 		await cachesDeleteExpired();
 	} else {
-		return;
+		throw lastError;
 	}
 	return cachePut(cacheKey, request, response, retry + 1);
 };

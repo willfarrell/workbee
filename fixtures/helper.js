@@ -8,6 +8,15 @@ import {
 } from "../packages/core/index.js";
 
 const { caches } = makeServiceWorkerEnv();
+// Tests frequently stub `openCaches[key] = mock` directly. getCache in
+// cache.js now calls `caches.has(key)` to detect stale references; without
+// this shim those stubs would be discarded as "stale". Keep `caches.has`
+// truthy for any key tests registered on openCaches.
+const originalHas = caches.has.bind(caches);
+caches.has = async (key) => {
+	if (openCaches[key]) return true;
+	return originalHas(key);
+};
 
 export const cachesOverride = caches;
 export const documentOverride = {
@@ -169,6 +178,7 @@ export const spy = (fn) => {
 export const setupMocks = (
 	strategy = strategyCacheOnly,
 	cacheMatch = `${domain}/cache/found`,
+	t,
 ) => {
 	const cache = {
 		put: spy(),
@@ -195,16 +205,25 @@ export const setupMocks = (
 		middlewares: [middleware],
 	});
 
-	return { cache, middleware, event, config };
+	const cleanup = () => {
+		delete openCaches["sw-default"];
+	};
+	if (t?.after) t.after(cleanup);
+
+	return { cache, middleware, event, config, cleanup };
 };
 
-Object.assign(global, {
-	caches: cachesOverride,
-	document: documentOverride,
-	fetch: fetchOverride,
-});
-Object.defineProperty(global, "navigator", {
-	value: navigatorOverride,
-	writable: true,
-	configurable: true,
-});
+export const setupGlobals = () => {
+	Object.assign(global, {
+		caches: cachesOverride,
+		document: documentOverride,
+		fetch: fetchOverride,
+	});
+	Object.defineProperty(global, "navigator", {
+		value: navigatorOverride,
+		writable: true,
+		configurable: true,
+	});
+};
+
+setupGlobals();

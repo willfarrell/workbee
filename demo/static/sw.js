@@ -46,8 +46,8 @@ import {
 	strategyNetworkOnly,
 	// strategyLocalDownload,
 	strategyPartition,
+	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
-	strategyStatic,
 } from "../../packages/core/index.js";
 import fallbackMiddleware from "../../packages/fallback/index.js";
 import inactivityMiddleware from "../../packages/inactivity/index.js";
@@ -94,6 +94,11 @@ const config = compileConfig({
 		{
 			pathPattern: pathPattern("strategyStaleWhileRevalidate$"),
 			strategy: strategyStaleWhileRevalidate,
+		},
+		{
+			pathPattern: pathPattern("strategyStaleIfError$"),
+			cacheName: "strategyStaleIfError",
+			strategy: strategyStaleIfError,
 		},
 		{
 			pathPattern: pathPattern("strategyIgnore$"),
@@ -172,7 +177,7 @@ const config = compileConfig({
 			methods: ["POST"],
 			pathPattern: pathPattern("offlineMiddleware$"),
 			cacheName: "offlineMiddleware",
-			strategy: strategyStatic(new Error("offline")),
+			strategy: strategyNetworkOnly,
 			middlewares: [offline, loggerMiddleware()],
 		},
 		{
@@ -230,7 +235,9 @@ addEventListener("message", (event) => {
 });
 
 const messageEvents = {
-	cache: cacheOverrideEvent(config),
+	cache: cacheOverrideEvent(config, {
+		allowedOrigins: [self.location.origin],
+	}),
 	online: offline.postMessageEvent,
 };
 

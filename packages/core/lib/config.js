@@ -1,32 +1,37 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
 import { postMessageToAll, postMessageToFocused } from "./postMessage.js";
+import { compileRoute, pick, resolveMiddlewares } from "./route.js";
 import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
 
 // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-export const pathPattern = (pathPattern) => new RegExp(pathPattern);
-export const defaultConfig = {
+export const pathPattern = (pattern) => new RegExp(pattern);
+// Frozen so consumers can't mutate the shared default shape. Nested objects
+// are frozen too; route compilation always spreads (…defaultConfig, …user)
+// into a fresh object, so freezing doesn't block normal use.
+export const defaultConfig = Object.freeze({
 	// global
 	cachePrefix: "sw-",
+	skipWaiting: true,
 
 	// installEvent
 	// { ...Route, routes:Route[] }
-	precache: {
-		routes: [], // path[]
+	precache: Object.freeze({
+		routes: Object.freeze([]), // path[]
 		strategy: strategyNetworkFirst,
 		eventType: false,
 		postMessage: postMessageToFocused,
-	},
+	}),
 
 	// activateEvent
-	activate: {
+	activate: Object.freeze({
 		eventType: false,
 		postMessage: postMessageToAll,
-	},
+	}),
 
 	// fetchEvent
 	// Route
-	methods: [],
+	methods: Object.freeze([]),
 	pathPattern: pathPattern(".*$"),
 	strategy: strategyNetworkOnly,
 	// requestMiddlware: [],
@@ -35,117 +40,43 @@ export const defaultConfig = {
 	cacheControlMaxAge: -1, // -1 = disable
 
 	// Route[]
-	routes: [],
+	routes: Object.freeze([]),
+});
+
+const assertArray = (field, value) => {
+	if (value !== undefined && !Array.isArray(value)) {
+		throw new TypeError(
+			`compileConfig: \`${field}\` must be an array, received ${typeof value}`,
+		);
+	}
 };
 
-// strings
-const before = "before";
-const beforeNetwork = "beforeNetwork";
-const afterNetwork = "afterNetwork";
-const after = "after";
-const cachePrefix = "cachePrefix";
-const cacheName = "cacheName";
-const methods = "methods";
-const strategy = "strategy";
-const middlewares = "middlewares";
+export const compileConfig = (config = {}) => {
+	assertArray("routes", config.routes);
+	assertArray("middlewares", config.middlewares);
+	// precache.routes can be string[], {path}[], or a single string URL —
+	// only the array forms need asserting.
+	if (
+		config.precache?.routes !== undefined &&
+		typeof config.precache.routes !== "string"
+	) {
+		assertArray("precache.routes", config.precache.routes);
+	}
+	const baseConfig = resolveMiddlewares({ ...defaultConfig, ...config });
+	baseConfig.routes = baseConfig.routes.map((r) => compileRoute(baseConfig, r));
 
-export const compileConfig = (config) => {
-	const baseConfig = { ...defaultConfig, ...config };
-	baseConfig.cacheKey = baseConfig.cachePrefix + baseConfig.cacheName;
-	baseConfig.before = flattenMiddleware(before, baseConfig);
-	baseConfig.beforeNetwork = flattenMiddleware(beforeNetwork, baseConfig);
-	baseConfig.afterNetwork = flattenMiddleware(
-		afterNetwork,
-		baseConfig,
-	).reverse();
-	baseConfig.after = flattenMiddleware(after, baseConfig).reverse();
-	// baseConfig.requestPlugins = flattenMiddleware('request', baseConfig)
-	// baseConfig.responsePlugins = flattenMiddleware('response', baseConfig)
-
-	baseConfig.routes = baseConfig.routes.map((route) => {
-		const routeConfig = {
-			...pick(baseConfig, [
-				cachePrefix,
-				cacheName,
-				methods,
-				strategy,
-				middlewares,
-			]),
-			...route,
-		};
-		routeConfig.cacheKey = routeConfig.cachePrefix + routeConfig.cacheName;
-		routeConfig.before = flattenMiddleware(before, routeConfig);
-		routeConfig.beforeNetwork = flattenMiddleware(beforeNetwork, routeConfig);
-		routeConfig.afterNetwork = flattenMiddleware(
-			afterNetwork,
-			routeConfig,
-		).reverse();
-		routeConfig.after = flattenMiddleware(after, routeConfig).reverse();
-		// routeConfig.requestPlugins = flattenMiddleware('request', routeConfig)
-		// routeConfig.responsePlugins = flattenMiddleware('response', routeConfig)
-		return routeConfig;
-	});
-
-	const precacheConfig = {
+	const precacheConfig = resolveMiddlewares({
 		...defaultConfig.precache,
-		...pick(baseConfig, [cachePrefix, cacheName, middlewares]),
+		...pick(baseConfig, ["cachePrefix", "cacheName", "middlewares"]),
 		...baseConfig.precache,
-	};
-	precacheConfig.cacheKey = baseConfig.cachePrefix + precacheConfig.cacheName;
-	precacheConfig.before = flattenMiddleware(before, precacheConfig);
-	precacheConfig.beforeNetwork = flattenMiddleware(
-		beforeNetwork,
-		precacheConfig,
-	);
-	precacheConfig.afterNetwork = flattenMiddleware(
-		afterNetwork,
-		precacheConfig,
-	).reverse();
-	precacheConfig.after = flattenMiddleware(after, precacheConfig).reverse();
-	// precacheConfig.requestPlugins = flattenMiddleware('request', precacheConfig)
-	// precacheConfig.responsePlugins = flattenMiddleware('response', precacheConfig)
-	precacheConfig.routes = precacheConfig.routes.map((route) => {
-		if (typeof route === "string") route = { path: route };
-		const routeConfig = {
-			...pick(precacheConfig, [
-				cachePrefix,
-				cacheName,
-				methods,
-				strategy,
-				middlewares,
-			]),
-			...route,
-		};
-		routeConfig.cacheKey = routeConfig.cachePrefix + routeConfig.cacheName;
-		routeConfig.before = flattenMiddleware(before, routeConfig);
-		routeConfig.beforeNetwork = flattenMiddleware(beforeNetwork, routeConfig);
-		routeConfig.afterNetwork = flattenMiddleware(
-			afterNetwork,
-			routeConfig,
-		).reverse();
-		routeConfig.after = flattenMiddleware(after, routeConfig).reverse();
-		// routeConfig.requestPlugins = flattenMiddleware('request', routeConfig)
-		// routeConfig.responsePlugins = flattenMiddleware('response', routeConfig)
-		return routeConfig;
 	});
+	// A string URL is compiled by events.js after fetching + extract().
+	if (Array.isArray(precacheConfig.routes)) {
+		precacheConfig.routes = precacheConfig.routes.map((r) =>
+			compileRoute(precacheConfig, r),
+		);
+	}
 	baseConfig.precache = precacheConfig;
 
 	return baseConfig;
 };
-
-const pick = (originalObject = {}, keysToPick = []) => {
-	const newObject = {};
-	for (const path of keysToPick) {
-		// only supports first level
-		if (originalObject[path] !== undefined) {
-			newObject[path] = originalObject[path];
-		}
-	}
-	return newObject;
-};
-
-const flattenMiddleware = (type, routeConfig) =>
-	(routeConfig.middlewares ?? [])
-		.filter(Boolean)
-		.map((middleware) => middleware[type])
-		.filter(Boolean);

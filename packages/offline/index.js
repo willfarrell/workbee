@@ -54,14 +54,14 @@ const offlineMiddleware = ({
 		return newResponse({ status: 202 });
 	};
 
-	let cursor, timer;
+	let timer;
 	const timeout = () => {
 		if (pollDelay > 0) {
 			timer = setTimeout(postMessageEvent, pollDelay);
 		}
 	};
 
-	let idbDatabase, idbTransaction, idbObjectStore;
+	let idbDatabase;
 	const idbOpenRequest = indexedDB.open("sw", 1);
 	let dbError;
 	const dbReady = new Promise((resolve, reject) => {
@@ -81,49 +81,71 @@ const offlineMiddleware = ({
 	});
 	dbReady.catch(() => {});
 
-	const idbCursor = async () => {
-		await idbStartTransaction();
-		return new Promise((resolve, reject) => {
-			const request = idbObjectStore.openCursor();
-			request.onsuccess = (event) => resolve(event?.target?.result);
-			request.onerror = (event) => reject(event?.target?.error);
-		});
-	};
-
-	const idbStartTransaction = async () => {
+	// Runs `work(store)` inside a fresh transaction. Each call to enqueue /
+	// postMessageEvent gets its own transaction, so concurrent callers cannot
+	// clobber each other's cursor/objectStore state.
+	const withStore = async (mode, work) => {
 		if (dbError) throw dbError;
 		await dbReady;
-		idbTransaction = idbDatabase.transaction([objectStoreName], "readwrite");
-		idbObjectStore = idbTransaction.objectStore(objectStoreName);
+		const tx = idbDatabase.transaction([objectStoreName], mode);
+		const store = tx.objectStore(objectStoreName);
+		const done = new Promise((resolve, reject) => {
+			tx.oncomplete = () => resolve();
+			tx.onabort = () => reject(tx.error);
+			tx.onerror = () => reject(tx.error);
+		});
+		const result = await work(store);
+		await done;
+		return result;
 	};
+
+	// Reads the oldest queued entry (key + value) in its own transaction.
+	const peekHead = () =>
+		withStore(
+			"readonly",
+			(store) =>
+				new Promise((resolve, reject) => {
+					const req = store.openCursor();
+					req.onsuccess = (e) => {
+						const cursor = e?.target?.result;
+						resolve(cursor ? { key: cursor.key, value: cursor.value } : null);
+					};
+					req.onerror = (e) => reject(e?.target?.error);
+				}),
+		);
+
+	const deleteByKey = (key) =>
+		withStore("readwrite", (store) => {
+			store.delete(key);
+		});
+
+	const addEntry = (entry) =>
+		withStore("readwrite", (store) => {
+			store.add(entry);
+		});
 
 	const enqueue = async (request) => {
 		const serialized = await idbSerializeRequest(request);
 		for (const header of redactHeaders) {
 			delete serialized.headers[header.toLowerCase()];
 		}
-		// Catch attempts to add in a duplicate
-		cursor = await idbCursor();
-		if (JSON.stringify(cursor?.value) !== JSON.stringify(serialized)) {
-			if (enqueueEventType) {
-				postMessage({ type: enqueueEventType, ...serialized });
-			}
-			await idbStartTransaction();
-			try {
-				idbObjectStore.add(serialized);
-			} catch (e) {
-				consoleError(e);
-				// https://github.com/dumbmatter/fakeIndexedDB/issues/51
-				if (e.name === "QuotaExceededError") {
-					if (quotaExceededEventType) {
-						postMessage({ type: quotaExceededEventType });
-					}
-				}
-				// TODO backoff timer to retry add
-				// idbObjectStore.add(serialized)
+		// Avoid enqueuing an exact duplicate of the current head
+		const head = await peekHead();
+		if (JSON.stringify(head?.value) === JSON.stringify(serialized)) {
+			return;
+		}
+		if (enqueueEventType) {
+			postMessage({ type: enqueueEventType, ...serialized });
+		}
+		try {
+			await addEntry(serialized);
+		} catch (e) {
+			consoleError(e);
+			if (e.name === "QuotaExceededError" && quotaExceededEventType) {
+				postMessage({ type: quotaExceededEventType });
 			}
 		}
-		if (!cursor) {
+		if (!head) {
 			timeout();
 		}
 	};
@@ -135,14 +157,13 @@ const offlineMiddleware = ({
 			return timeout();
 		}
 		try {
-			cursor = await idbCursor();
-			if (cursor) {
-				const value = cursor.value;
-				const response = await fetch(idbDeserializeRequest(value));
+			const head = await peekHead();
+			if (head) {
+				const response = await fetch(idbDeserializeRequest(head.value));
 				if (!statusCodes.includes(response.status)) {
-					cursor.delete();
+					await deleteByKey(head.key);
 					if (dequeueEventType) {
-						postMessage({ type: dequeueEventType, ...value });
+						postMessage({ type: dequeueEventType, ...head.value });
 					}
 					return postMessageEvent();
 				}
@@ -173,8 +194,31 @@ export default offlineMiddleware;
 // handling sensitive body data should implement a custom `redactBody` strategy
 // or avoid using the offline queue for those routes.
 
+const textContentType = (ct) =>
+	!ct ||
+	ct.startsWith("text/") ||
+	ct.startsWith("application/json") ||
+	ct.startsWith("application/javascript") ||
+	ct.startsWith("application/xml") ||
+	ct.startsWith("application/xhtml+xml") ||
+	ct.includes("+json") ||
+	ct.includes("+xml");
+
+const bytesToBase64 = (bytes) => {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i++)
+		binary += String.fromCharCode(bytes[i]);
+	return btoa(binary);
+};
+
+const base64ToBytes = (base64) => {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+};
+
 export const idbSerializeRequest = async (request) => {
-	// TODO test using ...request instead
 	const properties = {};
 	for (const property of [
 		"method",
@@ -192,8 +236,17 @@ export const idbSerializeRequest = async (request) => {
 			properties[property] = request[property];
 		}
 	}
-	const body = request.body && (await request.clone().text());
 	const headers = headersGetAll(request.headers);
+	let body = null;
+	if (request.body) {
+		const cloned = request.clone();
+		if (textContentType(headers["content-type"])) {
+			body = { encoding: "text", data: await cloned.text() };
+		} else {
+			const bytes = new Uint8Array(await cloned.arrayBuffer());
+			body = { encoding: "base64", data: bytesToBase64(bytes) };
+		}
+	}
 	return {
 		...properties,
 		headers,
@@ -202,5 +255,9 @@ export const idbSerializeRequest = async (request) => {
 };
 
 export const idbDeserializeRequest = (data) => {
-	return newRequest(data.url, data);
+	let body = data.body;
+	if (body && typeof body === "object" && typeof body.encoding === "string") {
+		body = body.encoding === "base64" ? base64ToBytes(body.data) : body.data;
+	}
+	return newRequest(data.url, { ...data, body });
 };
