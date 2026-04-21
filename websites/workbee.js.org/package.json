@@ -43,11 +43,7 @@
 	},
 	"overrides": {
 		"@sveltejs/kit": {
-			"cookie": "^0.7.0",
-			"devalue": "5.7.1"
-		},
-		"svelte": {
-			"devalue": "5.7.1"
+			"cookie": "^0.7.0"
 		},
 		"@willfarrell-ds/cli": {
 			"mathjs": "^15.2.0"
