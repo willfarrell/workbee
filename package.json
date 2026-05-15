@@ -69,8 +69,8 @@
 	},
 	"homepage": "https://workbee.js.org",
 	"devDependencies": {
-		"@biomejs/biome": "^2.0.0",
-		"@commitlint/cli": "^20.0.0",
+		"@biomejs/biome": "^2.4.13",
+		"@commitlint/cli": "^20.5.2",
 		"@commitlint/config-conventional": "^20.0.0",
 		"@playwright/test": "^1.0.0",
 		"esbuild": "^0.28.0",
@@ -78,7 +78,7 @@
 		"fast-check": "^4.0.0",
 		"husky": "^9.0.0",
 		"service-worker-mock": "^2.0.0",
-		"tstyche": "^7.0.0"
+		"tstyche": "^7.1.0"
 	},
 	"overrides": {
 		"mathjs": "^15.2.0",
