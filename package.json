@@ -69,9 +69,9 @@
 	},
 	"homepage": "https://workbee.js.org",
 	"devDependencies": {
-		"@biomejs/biome": "^2.4.13",
-		"@commitlint/cli": "^20.5.2",
-		"@commitlint/config-conventional": "^20.0.0",
+		"@biomejs/biome": "^2.4.14",
+		"@commitlint/cli": "^20.5.3",
+		"@commitlint/config-conventional": "^20.5.3",
 		"@playwright/test": "^1.0.0",
 		"esbuild": "^0.28.0",
 		"fake-indexeddb": "^6.0.0",
