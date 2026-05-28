@@ -70,7 +70,7 @@
 	"homepage": "https://workbee.js.org",
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.15",
-		"@commitlint/cli": "^20.5.3",
+		"@commitlint/cli": "^21.0.1",
 		"@commitlint/config-conventional": "^21.0.1",
 		"@playwright/test": "^1.60.0",
 		"esbuild": "^0.28.0",
