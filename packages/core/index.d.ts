@@ -174,7 +174,7 @@ export interface UserRouteConfig {
 }
 
 export interface UserPrecacheConfig extends UserRouteConfig {
-	routes?: (UserPrecacheRouteConfig | string)[];
+	routes?: (UserPrecacheRouteConfig | string)[] | string;
 	eventType?: string | false;
 	postMessage?: (
 		message: { type: string } & Record<string, unknown>,

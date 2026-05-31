@@ -35,6 +35,7 @@ test("config", async (t) => {
 		deepEqual(defaultConfig.methods, []);
 		deepEqual(defaultConfig.routes, []);
 		strictEqual(defaultConfig.strategy, strategyNetworkOnly);
+		strictEqual(defaultConfig.pathPattern.source, ".*$");
 	});
 
 	await t.test("defaultConfig: precache should have correct defaults", () => {
@@ -312,6 +313,34 @@ test("config", async (t) => {
 				caught.message,
 				"compileConfig: `middlewares` must be an array, received object",
 			);
+		},
+	);
+
+	await t.test(
+		"compileConfig: throws a clear error when precache.routes is a non-array, non-string value",
+		() => {
+			let caught;
+			try {
+				compileConfig({ middlewares: [], precache: { routes: 123 } });
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof TypeError, true);
+			strictEqual(
+				caught.message,
+				"compileConfig: `precache.routes` must be an array, received number",
+			);
+		},
+	);
+
+	await t.test(
+		"compileConfig: does not throw when precache.routes is a string URL",
+		() => {
+			const config = compileConfig({
+				middlewares: [],
+				precache: { routes: "/precache.json" },
+			});
+			strictEqual(config.precache.routes, "/precache.json");
 		},
 	);
 

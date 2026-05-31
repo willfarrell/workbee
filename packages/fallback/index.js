@@ -28,9 +28,8 @@ const fallbackMiddleware = ({
 		if (pathPattern) {
 			url = request.url.replace(pathPattern, path);
 		}
-		if (typeResponse) {
-			url = url.replace("{status}", response.status);
-		}
+		const status = typeResponse ? response.status : "";
+		url = url.replaceAll("{status}", String(status));
 		return fetchInlineStrategy(newRequest(url, request), event, {
 			...config,
 			strategy: fallbackStrategy ?? strategyCacheFirst,

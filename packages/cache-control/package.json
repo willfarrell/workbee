@@ -22,7 +22,8 @@
 		"index.d.ts"
 	],
 	"scripts": {
-		"test": "node --test"
+		"test": "node --test",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"dependencies": {
 		"@work-bee/core": "0.2.0"

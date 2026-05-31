@@ -1209,7 +1209,141 @@ test("Strategies", async (t) => {
 			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
 
 			const response = await fetchStrategy(event.__request, event, config);
-			let streamCaught = false;
+			let streamError;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch (e) {
+				streamError = e;
+			}
+			// Must surface the real strategy error, not a masking TypeError.
+			strictEqual(streamError instanceof Error, true);
+			strictEqual(/sub-response failed/.test(streamError.message), true);
+			let deferredError;
+			try {
+				await Promise.all(waitUntils);
+			} catch (e) {
+				deferredError = e;
+			}
+			strictEqual(deferredError, streamError);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: non-first sub-response Error surfaces the real error, not a TypeError",
+		async (_t) => {
+			// M1: streamResponses.pull() must not call arrayBuffer() on an Error
+			// value. A failing non-first sub-response must surface ITS error
+			// through the stream, not a generic "arrayBuffer is not a function".
+			const { strategyPartition } = await import("../index.js");
+			const okStrategy = () =>
+				new Response("first", {
+					status: 200,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+			const subError = new Error("second sub failed");
+			const failingStrategy = () => {
+				throw subError;
+			};
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						// First sub succeeds (seeds composite headers); second fails.
+						routes: [
+							{ path: "$1/ok", strategy: okStrategy },
+							{ path: "$1/fail", strategy: failingStrategy },
+						],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			let caught;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch (e) {
+				caught = e;
+			}
+			// The exact error must propagate, not a masking TypeError.
+			strictEqual(caught, subError);
+			strictEqual(/arrayBuffer/.test(caught.message), false);
+
+			let deferredError;
+			try {
+				await Promise.all(waitUntils);
+			} catch (e) {
+				deferredError = e;
+			}
+			strictEqual(deferredError, subError);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: mid-stream failure aborts in-flight siblings and drains their rejections",
+		async (_t) => {
+			// L1: when a sub-response fails mid-stream, the still-in-flight sibling
+			// fetches must be aborted (no leaked fetches) and their rejections
+			// drained (no unhandledRejection).
+			const { strategyPartition } = await import("../index.js");
+			const originalFetch = globalThis.fetch;
+			const seen = [];
+			const unhandled = [];
+			const onUnhandled = (e) => unhandled.push(e);
+			process.on("unhandledRejection", onUnhandled);
+
+			// Sub 1: resolves OK (seeds headers + first stream chunk).
+			// Sub 2: rejects (fails mid-stream).
+			// Sub 3: never resolves until its signal aborts.
+			globalThis.fetch = (request) => {
+				seen.push(request);
+				if (seen.length === 1) {
+					return Promise.resolve(
+						new Response("first", {
+							status: 200,
+							headers: new Headers({ Date: new Date().toString() }),
+						}),
+					);
+				}
+				if (seen.length === 2) {
+					return Promise.reject(new Error("sibling fetch failed"));
+				}
+				return new Promise((_resolve, reject) => {
+					request.signal?.addEventListener("abort", () => {
+						reject(new DOMException("Aborted", "AbortError"));
+					});
+				});
+			};
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "/a" }, { path: "/b" }, { path: "/c" }],
+						strategy: strategyNetworkOnly,
+						middlewares: [],
+					}),
+				),
+			);
+
+			const response = await fetchStrategy(event.__request, event, config);
 			try {
 				const reader = response.body.getReader();
 				while (true) {
@@ -1217,16 +1351,20 @@ test("Strategies", async (t) => {
 					if (done) break;
 				}
 			} catch {
-				streamCaught = true;
+				// expected: stream errors on the failing sibling
 			}
-			equal(streamCaught, true);
-			let deferredCaught = false;
-			try {
-				await Promise.all(waitUntils);
-			} catch {
-				deferredCaught = true;
-			}
-			equal(deferredCaught, true);
+			await Promise.allSettled(waitUntils);
+			// Give any leaked rejection a tick to surface.
+			await setTimeout(10);
+
+			process.off("unhandledRejection", onUnhandled);
+			globalThis.fetch = originalFetch;
+
+			strictEqual(seen.length, 3);
+			// The third sub-request must have been aborted by the failure path.
+			strictEqual(seen[2].signal.aborted, true);
+			// No rejection may escape unhandled.
+			strictEqual(unhandled.length, 0);
 		},
 	);
 
@@ -1256,6 +1394,143 @@ test("Strategies", async (t) => {
 			const result = await fetchStrategy(event.__request, event, config);
 			strictEqual(result instanceof Error, true);
 			strictEqual(/first sub failed/.test(result.message), true);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: non-Error, non-Response first sub-response is wrapped into an Error",
+		async (_t) => {
+			// Covers the first-sub guard's `new Error(String(first))` arm: a
+			// strategy that yields undefined (neither Response nor Error) must be
+			// surfaced as an Error, not silently used to build a broken composite.
+			const { strategyPartition } = await import("../index.js");
+			const undefinedStrategy = () => undefined;
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "$1/none", strategy: undefinedStrategy }],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const result = await fetchStrategy(event.__request, event, config);
+			strictEqual(result instanceof Error, true);
+			strictEqual(result.message, String(undefined));
+		},
+	);
+
+	await t.test(
+		"strategyPartition: non-Response, non-Error mid-stream value is wrapped; rejecting siblings are drained",
+		async (_t) => {
+			// Covers the streamResponses fail() path where the failing value is
+			// neither a Response nor an Error (wrap via new Error(String(value)))
+			// AND a still-in-flight sibling whose inline promise rejects (via a
+			// rejecting waitUntil) is drained without an unhandledRejection.
+			const { strategyPartition } = await import("../index.js");
+			const unhandled = [];
+			const onUnhandled = (e) => unhandled.push(e);
+			process.on("unhandledRejection", onUnhandled);
+
+			const okStrategy = () =>
+				new Response("first", {
+					status: 200,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+			// Resolves to undefined → fail() must wrap it (not call arrayBuffer).
+			const undefinedStrategy = () => undefined;
+			// Returns a Response but its waitUntil rejects → inline promise rejects;
+			// it is still in `responses` when fail() drains the siblings.
+			const rejectingSiblingStrategy = (_request, event) => {
+				event.waitUntil(Promise.reject(new Error("sibling waitUntil")));
+				return new Response("third", {
+					status: 200,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+			};
+
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [
+							{ path: "/a", strategy: okStrategy },
+							{ path: "/b", strategy: undefinedStrategy },
+							{ path: "/c", strategy: rejectingSiblingStrategy },
+						],
+						middlewares: [],
+					}),
+				),
+			);
+
+			const response = await fetchStrategy(event.__request, event, config);
+			let streamError;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch (e) {
+				streamError = e;
+			}
+			await Promise.allSettled(waitUntils);
+			await setTimeout(10);
+
+			process.off("unhandledRejection", onUnhandled);
+
+			// undefined was wrapped into an Error rather than masked as a TypeError.
+			strictEqual(streamError instanceof Error, true);
+			strictEqual(/arrayBuffer/.test(streamError.message), false);
+			strictEqual(streamError.message, String(undefined));
+			// The rejecting sibling's promise was drained — nothing escaped.
+			strictEqual(unhandled.length, 0);
+		},
+	);
+
+	await t.test(
+		"strategyPartition: first sub-response that rejects via waitUntil is caught and surfaced",
+		async (_t) => {
+			// L16: fetchInlineStrategy only rejects when one of its waitUntil
+			// promises rejects. That rejection of responses[0] must be caught (so
+			// it can't escape) and surfaced as the composite failure.
+			const { strategyPartition } = await import("../index.js");
+			const waitUntilError = new Error("waitUntil rejected");
+			// Returns a Response but registers a rejecting waitUntil, so the
+			// inline strategy's Promise.all(waitUntils) rejects.
+			const rejectingWaitUntilStrategy = (_request, event) => {
+				event.waitUntil(Promise.reject(waitUntilError));
+				return new Response("ok", { status: 200 });
+			};
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [{ path: "$1/fail", strategy: rejectingWaitUntilStrategy }],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const result = await fetchStrategy(event.__request, event, config);
+			// fetchStrategy never rejects: the caught first-sub rejection comes
+			// back as the Error value.
+			strictEqual(result, waitUntilError);
 		},
 	);
 
@@ -1380,6 +1655,278 @@ test("Strategies", async (t) => {
 			}
 
 			globalThis.fetch = originalFetch;
+		},
+	);
+
+	// *** direct-call return contract (return vs throw) *** //
+	// fetchInlineStrategy masks the difference between a strategy RETURNING a
+	// Response and THROWING it (fetchStrategy captures throws as the value), so
+	// these call the strategies directly to pin the success path as a return.
+	await t.test(
+		"strategyNetworkFirst: returns (does not throw) the Response on success",
+		async (_t) => {
+			const request = new Request(`${domain}/200`, { method: "GET" });
+			const { config } = setupMocks(strategyNetworkFirst);
+			const event = { waitUntil: () => {} };
+
+			const response = await strategyNetworkFirst(request, event, config);
+			strictEqual(response instanceof Response, true);
+			equal(response.status, 200);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: returns (does not throw) the Response on success",
+		async (_t) => {
+			const request = new Request(`${domain}/200`, { method: "GET" });
+			const { config } = setupMocks(strategyStaleIfError);
+			const event = { waitUntil: () => {} };
+
+			const response = await strategyStaleIfError(request, event, config);
+			strictEqual(response instanceof Response, true);
+			equal(response.status, 200);
+		},
+	);
+
+	await t.test(
+		"strategyStatic: returns (does not throw) a clone of the Response when called directly",
+		async (_t) => {
+			const { strategyStatic } = await import("../index.js");
+			const staticResponse = new Response("static body", { status: 200 });
+			const strategy = strategyStatic(staticResponse);
+
+			const response = await strategy();
+			strictEqual(response instanceof Response, true);
+			// A clone, not the same instance, and the original stays readable.
+			strictEqual(response === staticResponse, false);
+			equal(await response.text(), "static body");
+			equal(await staticResponse.text(), "static body");
+		},
+	);
+
+	// *** non-ok responses must NOT be cached (response.ok gate) *** //
+	await t.test(
+		"strategyNetworkFirst: does not cache a non-ok response even when it carries max-age",
+		async (_t) => {
+			const originalFetch = globalThis.fetch;
+			// 503 WITH a cacheable max-age: only the `response.ok` gate prevents
+			// caching here (applyExpires would otherwise add an Expires header and
+			// the inner Expires guard would then cache it).
+			globalThis.fetch = async () =>
+				new Response("err", {
+					status: 503,
+					headers: new Headers({
+						"Cache-Control": "max-age=86400",
+						Date: new Date().toString(),
+					}),
+				});
+			const request = new Request(`${domain}/200`, { method: "GET" });
+			const { cache, config } = setupMocks(
+				strategyNetworkFirst,
+				`${domain}/cache/notfound`,
+			);
+			const waitUntils = [];
+			const event = { waitUntil: (fct) => waitUntils.push(fct) };
+
+			const response = await strategyNetworkFirst(request, event, config);
+			// cachePut is dispatched via waitUntil; drain it so a (mutant) write
+			// would have completed before we assert.
+			await Promise.allSettled(waitUntils);
+			equal(response.status, 503);
+			equal(cache.put.callCount, 0);
+
+			globalThis.fetch = originalFetch;
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: does not cache a non-ok response even when it carries max-age",
+		async (_t) => {
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = async () =>
+				new Response("err", {
+					status: 503,
+					headers: new Headers({
+						"Cache-Control": "max-age=86400",
+						Date: new Date().toString(),
+					}),
+				});
+			const request = new Request(`${domain}/200`, { method: "GET" });
+			const { cache, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/notfound`,
+			);
+			const waitUntils = [];
+			const event = { waitUntil: (fct) => waitUntils.push(fct) };
+
+			const response = await strategyStaleIfError(request, event, config);
+			await Promise.allSettled(waitUntils);
+			equal(response.status, 503);
+			equal(cache.put.callCount, 0);
+
+			globalThis.fetch = originalFetch;
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: does not cache an ok response without an Expires (no max-age)",
+		async (_t) => {
+			// Guards the inner `if (response.headers.get('Expires'))`: a 200 with
+			// no max-age yields no Expires after applyExpires, so it must NOT cache.
+			const event = {
+				__request: new Request(`${domain}/cache-control/no-cache`, {
+					method: "GET",
+				}),
+			};
+			const { cache, config } = setupMocks(
+				strategyStaleIfError,
+				`${domain}/cache/notfound`,
+			);
+
+			const response = await fetchInlineStrategy(
+				event.__request,
+				event,
+				config,
+			);
+
+			equal(response.status, 200);
+			equal(response.headers.get("Expires"), null);
+			equal(cache.put.callCount, 0);
+		},
+	);
+
+	// *** strategyStaleIfError 5xx boundaries (500 <= status <= 599) *** //
+	// Drives a chosen network status through strategyStaleIfError while keeping a
+	// real 200 in the cache. fetch is overridden only for the request URL so the
+	// cache.match spy (which returns a direct Response) is unaffected.
+	const staleIfErrorWithStatus = async (status) => {
+		const originalFetch = globalThis.fetch;
+		const url = `${domain}/status-${status}`;
+		globalThis.fetch = async (req) => {
+			if (req.url === url) {
+				return new Response("network", {
+					status,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+			}
+			return originalFetch(req);
+		};
+		const request = new Request(url, { method: "GET" });
+		const { cache, config } = setupMocks(strategyStaleIfError, null);
+		const cachedBody = "cached-200";
+		const matchSpy = spy(async () => new Response(cachedBody, { status: 200 }));
+		openCaches["sw-default"].match = matchSpy;
+		cache.match = matchSpy;
+		const event = { waitUntil: () => {} };
+
+		const response = await strategyStaleIfError(request, event, config);
+		globalThis.fetch = originalFetch;
+		return { response, matchSpy, cachedBody };
+	};
+
+	await t.test(
+		"strategyStaleIfError: status 500 (lower boundary) falls back to cache",
+		async (_t) => {
+			const { response, matchSpy, cachedBody } =
+				await staleIfErrorWithStatus(500);
+			// Real code (500 <= status) serves the cached 200; `500 < status` would
+			// skip the fallback and return the 500 itself.
+			equal(response.status, 200);
+			equal(await response.text(), cachedBody);
+			equal(matchSpy.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: status 599 (upper boundary) falls back to cache",
+		async (_t) => {
+			const { response, matchSpy, cachedBody } =
+				await staleIfErrorWithStatus(599);
+			// Real code (status <= 599) serves the cached 200; `status < 599` would
+			// skip the fallback and return the 599 itself.
+			equal(response.status, 200);
+			equal(await response.text(), cachedBody);
+			equal(matchSpy.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"strategyStaleIfError: status 499 (just below 5xx) does NOT trigger cache fallback",
+		async (_t) => {
+			const { response, matchSpy } = await staleIfErrorWithStatus(499);
+			// 499 is below the 5xx window, so the success path returns it directly
+			// without ever consulting the cache.
+			equal(response.status, 499);
+			equal(matchSpy.callCount, 0);
+		},
+	);
+
+	// *** streamResponses pull() catch (line 236) *** //
+	await t.test(
+		"strategyPartition: an error thrown while reading a sub-response body surfaces through the stream",
+		async (_t) => {
+			// Drives the try/catch inside streamResponses.pull(): the first sub
+			// seeds headers + a chunk, the second is a real Response whose
+			// arrayBuffer() throws. The catch must route that error to fail()
+			// (controller.error), so reading the stream rejects with it.
+			const { strategyPartition } = await import("../index.js");
+			const okStrategy = () =>
+				new Response("first", {
+					status: 200,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+			const bufferError = new Error("arrayBuffer boom");
+			const boomStrategy = () => {
+				const res = new Response("second", {
+					status: 200,
+					headers: new Headers({ Date: new Date().toString() }),
+				});
+				Object.defineProperty(res, "arrayBuffer", {
+					value: () => {
+						throw bufferError;
+					},
+				});
+				return res;
+			};
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [
+							{ path: "$1/ok", strategy: okStrategy },
+							{ path: "$1/boom", strategy: boomStrategy },
+						],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const response = await fetchStrategy(event.__request, event, config);
+			let caught;
+			try {
+				const reader = response.body.getReader();
+				while (true) {
+					const { done } = await reader.read();
+					if (done) break;
+				}
+			} catch (e) {
+				caught = e;
+			}
+			// The exact error thrown by arrayBuffer() must propagate.
+			strictEqual(caught, bufferError);
+
+			let deferredError;
+			try {
+				await Promise.all(waitUntils);
+			} catch (e) {
+				deferredError = e;
+			}
+			strictEqual(deferredError, bufferError);
 		},
 	);
 });

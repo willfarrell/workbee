@@ -23,17 +23,19 @@ const redactHeaderValues = (headers, redactHeaders) => {
 const defaults = {
 	logger: (when, request, response, _event, config, redactHeaders) => {
 		consoleLog(when, request.url, config.strategy?.name || "custom", {
-			request,
+			url: request.url,
+			method: request.method,
+			status: response?.status,
+			statusText: response?.statusText,
 			requestHeaders: redactHeaderValues(
 				headersGetAll(request.headers),
 				redactHeaders,
 			),
-			response,
 			responseHeaders: redactHeaderValues(
 				headersGetAll(response?.headers),
 				redactHeaders,
 			),
-			config,
+			strategy: config.strategy?.name,
 		});
 	},
 	redactHeaders: defaultRedactHeaders,

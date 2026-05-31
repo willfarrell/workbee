@@ -26,7 +26,7 @@
 ## Features
 
 - Free to use under MIT license
-- Small and modular (up to 1KB minify + brotli)
+- Small and modular (leaf middleware ~0.2-0.5KB brotli; core ~3.3KB brotli)
 - Tree-shaking supported
 - Zero (0) dependencies
 - GDPR Compliant
@@ -44,6 +44,8 @@ WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/AP
 | Opera   | 71+            |
 
 The `@work-bee/offline` package additionally requires [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (supported in all browsers listed above).
+
+[Background Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Background_Fetch_API) is Chromium-only (Chrome/Edge/Opera); Firefox and Safari fall back to the normal fetch path.
 
 ## Getting Started
 
@@ -102,7 +104,9 @@ Routes requests through configured strategies and middleware.
 
 ### Push (future)
 
-### BackgroundFetch (future)
+### BackgroundFetch
+
+> Background Fetch is Chromium-only (Chrome/Edge/Opera). Firefox and Safari do not implement the [Background Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Background_Fetch_API) and fall back to the normal fetch path.
 
 ```js
 import { backgroundFetchSuccessEvent, backgroundFetchFailEvent } from '@work-bee/core'
@@ -293,21 +297,28 @@ sequenceDiagram
 ### Request Partitioning
 
 ```javascript
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst, strategyPartition } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, pathPattern, strategyNetworkFirst, strategyHTMLPartition } from '@work-bee/core'
 
 const config = compileConfig({
   cachePrefix: 'sw-VERSION-',
   routes: [
     {
       methods: ['GET'],
-      pathPattern: new RegExp('/api/data$'),
-      cacheName: 'data',
-      strategy: strategyPartition(compileConfig({
-        strategy: strategyCacheFirst,
-        cacheName: 'strategyPartition',
-        makeRequests: () => []
-      })),
-      cacheControlMaxAge: -1
+      pathPattern: pathPattern('(strategyHTMLPartition)$'),
+      cacheName: 'strategyHTMLPartition',
+      // strategyHTMLPartition derives one sub-request per `routes` entry from
+      // the incoming request URL (the captured group above is referenced as $1).
+      strategy: strategyHTMLPartition(
+        compileConfig({
+          routes: [
+            { path: '$1.header.html' },
+            { path: '$1.main.html' },
+            { path: '$1.footer.html' }
+          ],
+          cacheName: 'strategyHTMLPartition',
+          strategy: strategyNetworkFirst
+        })
+      )
     },
     ...
   ]
@@ -369,11 +380,11 @@ https://github.com/mdn/serviceworker-cookbook
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkFirst } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkFirst } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   strategy: strategyNetworkFirst
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -392,11 +403,11 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheOnly } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheOnly } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   strategy: strategyCacheOnly
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -415,11 +426,11 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyStaleWhileRevalidate } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyStaleWhileRevalidate } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   strategy: strategyStaleWhileRevalidate
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -440,11 +451,11 @@ Tries the network, caches successful responses gated by `Cache-Control` max-age,
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyStaleIfError } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyStaleIfError } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   strategy: strategyStaleIfError
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -467,11 +478,11 @@ Not yet implemented.
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
 import fallbackMiddleware from '@work-bee/fallback'
 
 const fallback = fallbackMiddleware({ path: '/path/to/fallback' })
-const config = {
+const config = compileConfig({
   precache: {
     routes: [
       {
@@ -481,8 +492,8 @@ const config = {
     strategy: strategyCacheOnly
   },
   strategy: strategyNetworkOnly,
-  after: [fallback.after]
-}
+  middlewares: [fallback]
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -503,14 +514,14 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkOnly, strategyCacheOnly } from '@work-bee/core'
 import fallbackMiddleware from '@work-bee/fallback'
 
 const fallback = fallbackMiddleware({
   path: '/path/to/offline',
-  statusCodes: [503, 504] // or Error
+  statusCodes: [503, 504] // or a thrown Error (e.g. offline network failure)
 })
-const config = {
+const config = compileConfig({
   precache: {
     routes: [
       {
@@ -520,8 +531,8 @@ const config = {
     strategy: strategyCacheOnly
   },
   strategy: strategyNetworkOnly,
-  after: [fallback.after]
-}
+  middlewares: [fallback]
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -540,9 +551,9 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst, strategyCacheOnly } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   precache: {
     routes: [
       {
@@ -553,7 +564,7 @@ const config = {
     eventType: 'precache'
   },
   strategy: strategyCacheFirst
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -572,14 +583,14 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst, strategyCacheOnly } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   precache: {
     routes: '/path/to/precache.json',
   },
   strategy: strategyCacheFirst
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -622,14 +633,14 @@ Not yet implemented.
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
 import offlineMiddleware from '@work-bee/offline'
 
 const offline = offlineMiddleware({ pollDelay: 0 })
-const config = {
+const config = compileConfig({
   strategy: strategyCacheFirst,
   middlewares: [offline]
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -658,11 +669,11 @@ const messageEvents = {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { strategyCacheFirst } from '@work-bee/core'
+import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
 
-const config = {
+const config = compileConfig({
   strategy: strategyCacheFirst
-}
+})
 
 addEventListener('install', (event) => {
   eventInstall(event, config)
@@ -686,7 +697,8 @@ import {
   eventInstall,
   eventActivate,
   eventFetch,
-  cacheOverrideEvent
+  cacheOverrideEvent,
+  strategyNetworkFirst
 } from '@work-bee/core'
 
 const config = compileConfig({
@@ -715,7 +727,9 @@ addEventListener('message', (event) => {
   event.waitUntil(messageEvents[data.type](data))
 })
 const messageEvents = {
-  cache: cacheOverrideEvent(config)
+  // `allowedOrigins` is mandatory: cacheOverrideEvent only honours messages
+  // from these origins to prevent cache poisoning from untrusted sources.
+  cache: cacheOverrideEvent(config, { allowedOrigins: [self.location.origin] })
 }
 ```
 

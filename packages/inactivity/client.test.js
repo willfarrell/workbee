@@ -1,4 +1,4 @@
-import { strictEqual } from "node:assert";
+import { doesNotThrow, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
 
 // Mock browser APIs
@@ -99,29 +99,91 @@ test("inactivity client: throttles activity events within 1 second", () => {
 });
 
 test("inactivity client: handles missing service worker controller gracefully", () => {
+	// Fresh closure so activityTimestamp starts at 0 and the throttle guard does
+	// not short-circuit before the postMessage line — otherwise that line is
+	// never reached and `controller?.postMessage` -> `controller.postMessage`
+	// (a TypeError on null) would never be exercised.
+	const freshListeners = {};
+	const freshDoc = {
+		addEventListener: (name, handler, capture) => {
+			freshListeners[name] = { handler, capture };
+		},
+	};
+	globalThis.document = freshDoc;
 	const savedNav = globalThis.navigator;
 	globalThis.navigator = { serviceWorker: { controller: null } };
 
 	const originalDateNow = Date.now;
 	Date.now = () => 9_999_999;
-	const handler = listeners.mousedown.handler;
-	handler(); // Should not throw
+	initClient(["mousedown"]);
+	const handler = freshListeners.mousedown.handler;
+	// controller is null: real `controller?.postMessage` short-circuits to
+	// undefined; the mutant `controller.postMessage` throws on null.
+	doesNotThrow(handler);
 	Date.now = originalDateNow;
 
 	globalThis.navigator = savedNav;
+	globalThis.document = mockDocument;
 });
 
 test("inactivity client: handles missing service worker gracefully", () => {
+	const freshListeners = {};
+	const freshDoc = {
+		addEventListener: (name, handler, capture) => {
+			freshListeners[name] = { handler, capture };
+		},
+	};
+	globalThis.document = freshDoc;
 	const savedNav = globalThis.navigator;
 	globalThis.navigator = {};
 
 	const originalDateNow = Date.now;
 	Date.now = () => 19_999_999;
-	const handler = listeners.mousedown.handler;
-	handler(); // Should not throw
+	initClient(["mousedown"]);
+	const handler = freshListeners.mousedown.handler;
+	// serviceWorker is undefined: real `serviceWorker?.controller` short-circuits;
+	// the mutant `serviceWorker.controller` throws on undefined.
+	doesNotThrow(handler);
 	Date.now = originalDateNow;
 
 	globalThis.navigator = savedNav;
+	globalThis.document = mockDocument;
+});
+
+test("inactivity client: fires (does not throttle) at exactly the 1000ms boundary", () => {
+	// Boundary for `activityTimestamp + 1000 > now`. After the first event sets
+	// activityTimestamp = T0, an event at exactly T0 + 1000 makes the guard
+	// `T0+1000 > T0+1000` false -> it FIRES. The `>` -> `>=` mutant would make it
+	// `T0+1000 >= T0+1000` true -> throttled, so the second message is suppressed.
+	const freshListeners = {};
+	const freshDoc = {
+		addEventListener: (name, handler, capture) => {
+			freshListeners[name] = { handler, capture };
+		},
+	};
+	globalThis.document = freshDoc;
+	const savedNav = globalThis.navigator;
+	const post = mock.fn();
+	globalThis.navigator = {
+		serviceWorker: { controller: { postMessage: post } },
+	};
+
+	const originalDateNow = Date.now;
+	const t0 = 5_000_000;
+	Date.now = () => t0;
+	initClient(["mousedown"]);
+	const handler = freshListeners.mousedown.handler;
+	handler(); // first event fires, activityTimestamp = t0
+	strictEqual(post.mock.callCount(), 1);
+
+	// Exactly 1000ms later: real code fires (count 2), `>=` mutant throttles (1).
+	Date.now = () => t0 + 1000;
+	handler();
+	strictEqual(post.mock.callCount(), 2);
+
+	Date.now = originalDateNow;
+	globalThis.navigator = savedNav;
+	globalThis.document = mockDocument;
 });
 
 test("inactivity client: returns cleanup function that removes listeners", () => {

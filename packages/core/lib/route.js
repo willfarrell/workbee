@@ -28,6 +28,11 @@ export const pick = (originalObject = {}, keysToPick = []) => {
 };
 
 const flattenMiddleware = (type, routeConfig) =>
+	// Stryker disable next-line ArrayDeclaration: the `?? []` fallback is only hit
+	// when middlewares is null/undefined. A non-empty fallback like ["..."] is
+	// neutralized by the pipeline below — `"..."[type]` (type is a non-numeric
+	// phase name) is undefined, which `.filter(Boolean)` drops — so the result is
+	// identical ([]) and no test can observe the difference.
 	(routeConfig.middlewares ?? [])
 		.filter(Boolean)
 		.map((middleware) => middleware[type])

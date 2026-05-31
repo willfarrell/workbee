@@ -54,11 +54,22 @@ import inactivityMiddleware from "../../packages/inactivity/index.js";
 import loggerMiddleware from "../../packages/logger/index.js";
 import offlineMiddleware from "../../packages/offline/index.js";
 import saveDataMiddleware from "../../packages/save-data/index.js";
+import sessionMiddleware from "../../packages/session/index.js";
 
 // Shared middleware
 const _inactivity = inactivityMiddleware({});
 const offline = offlineMiddleware({
 	pollDelay: 0, // Disabled in favour of `onlineEvent`
+});
+// Same-origin session: `login` (POST) extracts the Bearer token from the
+// response (stripping Authorization before it reaches the page), `authn` (GET)
+// carries that token on subsequent same-origin requests, and `logout` (POST)
+// clears it.
+const session = sessionMiddleware({
+	authnMethods: ["POST"],
+	authnPathPattern: pathPattern("login$"),
+	authzPathPattern: pathPattern("authn$"),
+	unauthnPathPattern: pathPattern("logout$"),
 });
 
 const config = compileConfig({
@@ -190,20 +201,26 @@ const config = compileConfig({
 				loggerMiddleware(),
 			],
 		},
-		/* {
-      methods: ['POST'],
-      path: new RegExp('login$'),
-      cacheName: 'sessionMiddleware'
-    },
-    {
-      path: new RegExp('authn$'),
-      cacheName: 'authn'
-    },
-    {
-      methods: ['POST'],
-      path: new RegExp('logout$'),
-      cacheName: 'logout'
-    } */
+		{
+			methods: ["POST"],
+			pathPattern: pathPattern("login$"),
+			cacheName: "sessionLogin",
+			strategy: strategyNetworkOnly,
+			middlewares: [session, loggerMiddleware()],
+		},
+		{
+			pathPattern: pathPattern("authn$"),
+			cacheName: "sessionAuthn",
+			strategy: strategyNetworkOnly,
+			middlewares: [session, loggerMiddleware()],
+		},
+		{
+			methods: ["POST"],
+			pathPattern: pathPattern("logout$"),
+			cacheName: "sessionLogout",
+			strategy: strategyNetworkOnly,
+			middlewares: [session, loggerMiddleware()],
+		},
 	],
 	methods: ["GET"],
 	strategy: strategyNetworkOnly,

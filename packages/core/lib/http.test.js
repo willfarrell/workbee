@@ -123,6 +123,15 @@ test("http", async (t) => {
 	);
 
 	await t.test(
+		"newResponse: auto-set date header is an HTTP-date (GMT)",
+		async () => {
+			const response = newResponse({ status: 200, body: "" });
+			const dateHeader = response.headers.get("date");
+			strictEqual(/ GMT$/.test(dateHeader), true);
+		},
+	);
+
+	await t.test(
 		"newResponse: should preserve date header when provided",
 		async () => {
 			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
@@ -153,6 +162,21 @@ test("http", async (t) => {
 			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
 			const headers = new Headers({ Date: customDate });
 			const response = newResponse({ status: 200, body: "" }, headers);
+			equal(response.headers.get("date"), customDate);
+		},
+	);
+
+	await t.test(
+		"newResponse: does not overwrite Date when provided as a plain object with uppercase key",
+		async () => {
+			// A plain object preserves its key casing through headersGetAll (no
+			// .entries() normalization), so the uppercase `headers.Date` guard is
+			// the only thing preventing an overwrite here.
+			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
+			const response = newResponse(
+				{ status: 200, body: "" },
+				{ Date: customDate },
+			);
 			equal(response.headers.get("date"), customDate);
 		},
 	);

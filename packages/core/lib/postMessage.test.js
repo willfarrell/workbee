@@ -1,4 +1,4 @@
-import { equal } from "node:assert";
+import { deepEqual, equal } from "node:assert";
 import { mock, test } from "node:test";
 import { postMessageToAll, postMessageToFocused } from "../index.js";
 
@@ -9,14 +9,21 @@ test("postMessage", async (t) => {
 		async () => {
 			const client1 = { postMessage: mock.fn() };
 			const client2 = { postMessage: mock.fn() };
-			global.clients = {
-				matchAll: () => Promise.resolve([client1, client2]),
-			};
+			const matchAll = mock.fn(() => Promise.resolve([client1, client2]));
+			global.clients = { matchAll };
 
 			await postMessageToAll({ type: "test" });
 
 			// Allow the .then() chain to resolve
 			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			// matchAll must query uncontrolled window clients so freshly-opened
+			// pages (not yet controlled by this SW) still receive the broadcast.
+			equal(matchAll.mock.callCount(), 1);
+			deepEqual(matchAll.mock.calls[0].arguments[0], {
+				includeUncontrolled: true,
+				type: "window",
+			});
 
 			equal(client1.postMessage.mock.callCount(), 1);
 			equal(client2.postMessage.mock.callCount(), 1);
@@ -43,12 +50,20 @@ test("postMessage", async (t) => {
 			const client1 = { focused: false, postMessage: mock.fn() };
 			const client2 = { focused: true, postMessage: mock.fn() };
 			const client3 = { focused: false, postMessage: mock.fn() };
-			global.clients = {
-				matchAll: () => Promise.resolve([client1, client2, client3]),
-			};
+			const matchAll = mock.fn(() =>
+				Promise.resolve([client1, client2, client3]),
+			);
+			global.clients = { matchAll };
 
 			await postMessageToFocused({ type: "focused" });
 			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			// Same query contract as postMessageToAll: uncontrolled window clients.
+			equal(matchAll.mock.callCount(), 1);
+			deepEqual(matchAll.mock.calls[0].arguments[0], {
+				includeUncontrolled: true,
+				type: "window",
+			});
 
 			equal(client1.postMessage.mock.callCount(), 0);
 			equal(client2.postMessage.mock.callCount(), 1);

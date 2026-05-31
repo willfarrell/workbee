@@ -35,6 +35,8 @@ interface OfflineOptions {
 	enqueueEventType?: string;
 	quotaExceededEventType?: string;
 	dequeueEventType?: string;
+	failedEventType?: string;
+	databaseName?: string;
 	objectStoreName?: string;
 	redactHeaders?: string[];
 }

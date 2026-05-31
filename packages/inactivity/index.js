@@ -25,13 +25,17 @@ const inactivityMiddleware = (opts) => {
 		}
 	};
 
-	const before = (request, _event, _config) => {
+	const inflight = new WeakSet();
+	const before = (request, event, _config) => {
 		clearTimeout(inactivityTimeout);
 		requestCount += 1;
+		if (event) inflight.add(event);
 		return request;
 	};
-	const after = (_request, response, _event, _config) => {
-		requestCount -= 1;
+	const after = (_request, response, event, _config) => {
+		if (!event || inflight.delete(event)) {
+			requestCount -= 1;
+		}
 		resetInactivityTimeout(inactivityAllowedInMs);
 		return response;
 	};

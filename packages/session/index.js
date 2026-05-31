@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-/* global caches */
+/* global caches self */
 
 // When sessionTimer expires, send inactivity message to main thread
 // Main tread check if user has been inactive (https://css-tricks.com/detecting-inactive-users/, https://stackoverflow.com/questions/1060008/is-there-a-way-to-detect-if-a-browser-window-is-not-currently-active)
@@ -31,6 +31,7 @@ const sessionMiddleware = ({
 	authnGetExpiry,
 	authzPathPattern,
 	authzSetToken,
+	authzAllowedOrigins,
 	// Session inactivity
 	inactivityPromptEventType,
 	postMessage,
@@ -49,12 +50,35 @@ const sessionMiddleware = ({
 
 	let sessionToken = "";
 	let sessionCaches = {};
+	let sessionExpiresInMilliseconds = 0;
+	let recentActivityTimestamp = 0;
 
 	let before, afterNetwork, after;
 
+	const swOrigin = globalThis.self?.location?.origin;
+	const allowedOrigins =
+		Array.isArray(authzAllowedOrigins) && authzAllowedOrigins.length
+			? authzAllowedOrigins
+			: swOrigin
+				? [swOrigin]
+				: null;
+	const isAllowedOrigin = (url) => {
+		if (!allowedOrigins) return true;
+		try {
+			return allowedOrigins.includes(new URL(url).origin);
+		} catch {
+			// Stryker restore BlockStatement
+			return false;
+		}
+	};
+
 	if (authzPathPattern) {
 		before = (request, _event, _config) => {
-			if (sessionToken && authzPathPattern.test(request.url)) {
+			if (
+				sessionToken &&
+				authzPathPattern.test(request.url) &&
+				isAllowedOrigin(request.url)
+			) {
 				request = authzSetToken(request, sessionToken);
 			}
 			return request;
@@ -62,6 +86,7 @@ const sessionMiddleware = ({
 		after = (request, response, _event, config) => {
 			activityEvent();
 			if (authzPathPattern.test(request.url)) {
+				// Stryker disable next-line BooleanLiteral: only Object.keys(sessionCaches) is ever read (in clearSession); the stored value (true vs false) is never inspected for truthiness, and the property/key is created either way, so caches.delete iterates the identical key set — no observable behavior changes.
 				sessionCaches[config.cacheKey] ??= true;
 			}
 			return response;
@@ -91,9 +116,6 @@ const sessionMiddleware = ({
 			return response;
 		};
 	}
-
-	let sessionExpiresInMilliseconds = 0;
-	let recentActivityTimestamp = 0;
 
 	let inactivityTimeout;
 	const inactivityTimer = () => {
@@ -134,7 +156,7 @@ const sessionMiddleware = ({
 	// sw -> Page
 	const expiryPromptEvent = () => {
 		if (
-			recentActivityTimestamp <
+			recentActivityTimestamp <=
 			now() - sessionExpiresInMilliseconds + inactivityTimeoutBuffer
 		) {
 			if (inactivityPromptEventType) {
@@ -169,6 +191,7 @@ export const getTokenAuthorization = (response) => {
 const fromBase64Url = (str) =>
 	atob(
 		str.replace(/-/g, "+").replace(/_/g, "/") +
+			// Stryker disable next-line StringLiteral,ArithmeticOperator: this expression only appends base64 `=` padding; Node's atob decodes byte-identically with or without padding for every length residue (verified empirically), and both mutations ("" / *4) merely drop the padding, yielding the same decoded payload and thus the same parsed expiry — no observable behavior changes in the Node runtime the tests run in.
 			"===".slice((str.length + 3) % 4),
 	);
 

@@ -13,6 +13,10 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # never cancel an in-progress publish
+
 jobs:
   build:
     name: Build
@@ -43,42 +47,59 @@ jobs:
           tag=$(npm pkg get version | xargs)
           echo "tag=${tag}" >> "$GITHUB_ENV"
           echo "prerelease=$([ "${tag##*-*}" ] && echo false || echo true)" >> "$GITHUB_ENV"
+          # Only release/publish when the merged root version actually changed.
+          # Check EVERY public package against the registry (not just core) so a
+          # re-run after a partial publish still proceeds to ship the laggards.
+          changed=false
+          for pkg in cache-control core fallback inactivity logger offline save-data session; do
+            published=$(npm view "@work-bee/${pkg}" version 2>/dev/null || echo "")
+            [ "${tag}" != "${published}" ] && changed=true
+          done
+          echo "changed=${changed}" >> "$GITHUB_ENV"
       - name: Install dependencies
+        if: ${{ env.changed == 'true' }}
         run: |
           npm ci --ignore-scripts
       - name: Verify dependency signatures
+        if: ${{ env.changed == 'true' }}
         run: |
           npm audit signatures
-      - name: Build
-        run: |
-          npm run build --if-present
       - name: Pack
         id: pack
+        if: ${{ env.changed == 'true' }}
         run: |
+          # Pack only public workspaces. `npm pack --workspaces` would also pack the
+          # private websites/* and .github workspaces, risking their publication.
+          mapfile -t args < <(
+            npm query '.workspace' | node -e 'for (const w of JSON.parse(require("node:fs").readFileSync(0, "utf8"))) if (!w.private) { console.log("--workspace"); console.log(w.location) }'
+          )
           {
             echo "packages<<EOF"
-            npm pack --workspaces --json
+            npm pack "${args[@]}" --json
             echo EOF
           } >> "$GITHUB_OUTPUT"
       - name: Build Attestations
+        if: ${{ env.changed == 'true' }}
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
           subject-path: |
             **/*.tgz
       - name: Upload artifact
+        if: ${{ env.changed == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.tag }}
           path: |
-            **/package.json
-            **/*.tgz
+            *.tgz
     outputs:
       tag: ${{ env.tag }}
       prerelease: ${{ env.prerelease }}
+      changed: ${{ env.changed }}
 
   release:
     name: Release
     needs: build
+    if: ${{ needs.build.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -109,10 +130,12 @@ jobs:
     outputs:
       tag: ${{ needs.build.outputs.tag }}
       prerelease: ${{ needs.build.outputs.prerelease }}
+      changed: ${{ needs.build.outputs.changed }}
 
   publish:
     name: Publish
     needs: release
+    if: ${{ needs.release.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -138,12 +161,52 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find . -name '*.tgz' -print -exec gh attestation verify {} --repo ${{ github.repository }} \;
+          # Loop (not find -exec) so a failed verification propagates a non-zero exit.
+          for f in *.tgz; do
+            echo "${f}"
+            gh attestation verify "${f}" --repo "${{ github.repository }}" || exit 1
+          done
       - name: npm publish (next)
         if: ${{ needs.release.outputs.prerelease == 'true' }}
+        # NODE_AUTH_TOKEN is a documented fallback: trusted publishing (OIDC) is the
+        # primary path, but if it isn't configured npm would otherwise silently no-op.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          find . -name '*.tgz' -exec npm publish --tag next --provenance --access public {} \;
+          # Fault-tolerant: publish each tarball, skip versions already published,
+          # fail only on a real error so a partial release can be safely re-run.
+          status=0
+          for f in *.tgz; do
+            if out=$(npm publish --tag next --provenance --access public "$f" 2>&1); then
+              echo "published: $f"
+            elif printf '%s\n' "$out" | grep -qiE 'cannot publish over|previously published|EPUBLISHCONFLICT'; then
+              echo "skip (already published): $f"
+            else
+              printf '%s\n' "$out" >&2
+              echo "FAILED: $f" >&2
+              status=1
+            fi
+          done
+          exit $status
       - name: npm publish (latest)
         if: ${{ needs.release.outputs.prerelease == 'false' }}
+        # NODE_AUTH_TOKEN is a documented fallback: trusted publishing (OIDC) is the
+        # primary path, but if it isn't configured npm would otherwise silently no-op.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          find . -name '*.tgz' -exec npm publish --tag latest --provenance --access public {} \;
+          # Fault-tolerant: publish each tarball, skip versions already published,
+          # fail only on a real error so a partial release can be safely re-run.
+          status=0
+          for f in *.tgz; do
+            if out=$(npm publish --tag latest --provenance --access public "$f" 2>&1); then
+              echo "published: $f"
+            elif printf '%s\n' "$out" | grep -qiE 'cannot publish over|previously published|EPUBLISHCONFLICT'; then
+              echo "skip (already published): $f"
+            else
+              printf '%s\n' "$out" >&2
+              echo "FAILED: $f" >&2
+              status=1
+            fi
+          done
+          exit $status

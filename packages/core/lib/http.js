@@ -32,7 +32,8 @@ export const isResponse = (response) => response instanceof Response;
 export const newResponse = ({ status, statusText, body }, headersObj) => {
 	const headers = headersGetAll(headersObj);
 	if (headers.Date === undefined && headers.date === undefined) {
-		headers.Date = new Date().toString();
+		// HTTP-date format (RFC 9110 §5.6.7); `.toString()` is not a valid date.
+		headers.Date = new Date().toUTCString();
 	}
 	return new Response(body, { status, statusText, headers });
 };

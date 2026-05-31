@@ -67,6 +67,14 @@ export const strategyStaleIfError = async (request, event, config) => {
 				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
 			}
 		}
+		// Stryker disable next-line ConditionalExpression: `response` here always
+		// comes from strategyNetworkOnly, which only ever returns a real Response
+		// (it throws otherwise). A Response's status is constrained by the platform
+		// to 200-599, so `response.status <= 599` is always true and the
+		// `... && true` mutant is behaviourally identical — no constructible
+		// Response can have status > 599 to distinguish it. The EqualityOperator
+		// mutants on this line (500<=…, …<=599) remain enabled and are killed by
+		// the status===500 and status===599 boundary tests.
 		if (500 <= response.status && response.status <= 599) {
 			const cachedResponse = await cacheMatch(config.cacheKey, request);
 			if (isResponse(cachedResponse)) {
@@ -198,9 +206,28 @@ const streamResponses = (responses, onCancel) => {
 	const streamDeferred = new Promise((resolve, reject) => {
 		body = new ReadableStream({
 			async pull(controller) {
+				const fail = (error) => {
+					// Stryker disable next-line OptionalChaining: streamResponses has a
+					// single caller (strategyPartition) that always passes a non-nullish
+					// onCancel (`() => abortController.abort()`), so `onCancel?.()` and
+					// `onCancel()` are behaviourally identical here — onCancel is never
+					// nullish on any reachable path.
+					onCancel?.();
+					for (const r of responses) r.catch(() => {});
+					controller.error(error);
+					reject(error);
+				};
 				try {
 					if (responses.length) {
 						const response = await responses.shift();
+						if (!isResponse(response)) {
+							fail(
+								response instanceof Error
+									? response
+									: new Error(String(response)),
+							);
+							return;
+						}
 						const buffer = await response.arrayBuffer();
 						controller.enqueue(new Uint8Array(buffer));
 					} else {
@@ -208,11 +235,13 @@ const streamResponses = (responses, onCancel) => {
 						resolve();
 					}
 				} catch (e) {
-					controller.error(e);
-					reject(e);
+					fail(e);
 				}
 			},
 			cancel() {
+				// Stryker disable next-line OptionalChaining: see the fail() note above
+				// — onCancel is always supplied by strategyPartition, so the optional
+				// call is equivalent to a plain call on every reachable path.
 				onCancel?.();
 				resolve();
 			},
