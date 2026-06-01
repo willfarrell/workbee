@@ -17,7 +17,6 @@ export default {
 		command: `node --no-warnings=ExperimentalWarning --test --experimental-test-module-mocks ./${base}/**/*.test.js`,
 	},
 	coverageAnalysis: "off",
-	disableTypeChecks: false,
 	mutate: [
 		`${base}/**/*.js`,
 		`!${base}/**/*.test.js`,
