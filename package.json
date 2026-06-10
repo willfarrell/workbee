@@ -78,7 +78,7 @@
 		"fast-check": "^4.8.0",
 		"husky": "^9.0.0",
 		"service-worker-mock": "^2.0.0",
-		"tstyche": "^7.1.0"
+		"tstyche": "^7.2.0"
 	},
 	"overrides": {
 		"mathjs": "^15.2.0",
