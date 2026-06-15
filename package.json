@@ -90,6 +90,7 @@
 	"overrides": {
 		"mathjs": "^15.2.0",
 		"cookie": "^0.7.0",
+		"qs": ">=6.15.2",
 		"ws": ">=8.21.0",
 		"wrangler": {
 			"esbuild": ">=0.28.1"
