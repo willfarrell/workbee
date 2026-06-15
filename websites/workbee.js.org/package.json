@@ -46,6 +46,12 @@
 		},
 		"@willfarrell-ds/cli": {
 			"mathjs": "^15.2.0"
+		},
+		"wrangler": {
+			"esbuild": ">=0.28.1",
+			"miniflare": {
+				"ws": ">=8.21.0"
+			}
 		}
 	}
 }
