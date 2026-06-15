@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false # never cancel an in-progress publish
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -50,11 +50,13 @@ jobs:
           # Only release/publish when the merged root version actually changed.
           # Check EVERY public package against the registry (not just core) so a
           # re-run after a partial publish still proceeds to ship the laggards.
+          # Discover public packages from packages/* (deps aren't installed yet, so
+          # read package.json directly) — a new package is picked up automatically.
           changed=false
-          for pkg in cache-control core fallback inactivity logger offline save-data session; do
-            published=$(npm view "@work-bee/${pkg}" version 2>/dev/null || echo "")
+          while IFS= read -r name; do
+            published=$(npm view "${name}" version 2>/dev/null || echo "")
             [ "${tag}" != "${published}" ] && changed=true
-          done
+          done < <(node -e 'const fs=require("node:fs"); for (const d of fs.readdirSync("packages")) { const p="packages/"+d+"/package.json"; if (fs.existsSync(p)) { const j=JSON.parse(fs.readFileSync(p,"utf8")); if (!j.private && j.name) console.log(j.name); } }')
           echo "changed=${changed}" >> "$GITHUB_ENV"
       - name: Install dependencies
         if: ${{ env.changed == 'true' }}
