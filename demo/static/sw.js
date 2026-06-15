@@ -37,6 +37,7 @@ import {
 	eventFetch,
 	eventInstall,
 	pathPattern,
+	postMessageToFocused,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
 	strategyCacheOnly,
@@ -57,9 +58,20 @@ import saveDataMiddleware from "../../packages/save-data/index.js";
 import sessionMiddleware from "../../packages/session/index.js";
 
 // Shared middleware
-const _inactivity = inactivityMiddleware({});
+// Short window + observable event so the e2e suite can drive it. The page
+// resets the timer by posting `{ type: "inactivity" }` (see the `inactivity`
+// message handler below); when the window lapses with no activity the worker
+// notifies the page with `{ type: "inactive" }`.
+const inactivity = inactivityMiddleware({
+	inactivityAllowedInMin: 0.05, // 3s
+	inactivityEvent: () => postMessageToFocused({ type: "inactive" }),
+});
 const offline = offlineMiddleware({
 	pollDelay: 0, // Disabled in favour of `onlineEvent`
+	// Notify the page when a request is queued / successfully replayed so the
+	// e2e suite (and real UIs) can observe the offline lifecycle.
+	enqueueEventType: "offline-enqueue",
+	dequeueEventType: "offline-dequeue",
 });
 // Same-origin session: `login` (POST) extracts the Bearer token from the
 // response (stripping Authorization before it reaches the page), `authn` (GET)
@@ -246,9 +258,13 @@ addEventListener("message", (event) => {
 	if (event.source && new URL(event.source.url).origin !== self.location.origin)
 		return;
 	const { data } = event;
-	if (!Object.hasOwn(messageEvents, data.type)) return;
+	if (!data || !Object.hasOwn(messageEvents, data.type)) return;
 	console.log("message", data);
-	event.waitUntil(messageEvents[data.type](data));
+	// Pass the whole event: `cacheOverrideEvent` reads `event.source`/`event.data`
+	// (and calls `event.waitUntil` itself); the offline/inactivity handlers ignore
+	// the argument. `Promise.resolve` normalises a possibly-undefined return so
+	// `waitUntil` never receives a non-promise.
+	event.waitUntil(Promise.resolve(messageEvents[data.type](event)));
 });
 
 const messageEvents = {
@@ -256,6 +272,7 @@ const messageEvents = {
 		allowedOrigins: [self.location.origin],
 	}),
 	online: offline.postMessageEvent,
+	inactivity: inactivity.postMessageEvent,
 };
 
 addEventListener("sync", (event) => {

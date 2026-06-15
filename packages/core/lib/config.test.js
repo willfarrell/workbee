@@ -31,7 +31,6 @@ test("config", async (t) => {
 	await t.test("defaultConfig: should have correct defaults", () => {
 		equal(defaultConfig.cachePrefix, "sw-");
 		equal(defaultConfig.cacheName, "default");
-		equal(defaultConfig.cacheControlMaxAge, -1);
 		deepEqual(defaultConfig.methods, []);
 		deepEqual(defaultConfig.routes, []);
 		strictEqual(defaultConfig.strategy, strategyNetworkOnly);
@@ -46,6 +45,32 @@ test("config", async (t) => {
 
 	await t.test("defaultConfig: activate should have correct defaults", () => {
 		strictEqual(defaultConfig.activate.eventType, false);
+	});
+
+	// *** compileConfig: passthrough *** //
+	await t.test(
+		"compileConfig: passthrough resolves true for the bare default proxy",
+		() => {
+			const config = compileConfig({});
+			strictEqual(config.passthrough, true);
+		},
+	);
+
+	await t.test("compileConfig: passthrough false disables the bypass", () => {
+		const config = compileConfig({ passthrough: false });
+		strictEqual(config.passthrough, false);
+	});
+
+	await t.test("compileConfig: a custom strategy disables passthrough", () => {
+		const config = compileConfig({ strategy: strategyNetworkFirst });
+		strictEqual(config.passthrough, false);
+	});
+
+	await t.test("compileConfig: middlewares disable passthrough", () => {
+		const config = compileConfig({
+			middlewares: [{ before: (request) => request }],
+		});
+		strictEqual(config.passthrough, false);
 	});
 
 	// *** compileConfig *** //

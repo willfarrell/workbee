@@ -17,6 +17,10 @@ export default {
 		command: `node --no-warnings=ExperimentalWarning --test --experimental-test-module-mocks ./${base}/**/*.test.js`,
 	},
 	coverageAnalysis: "off",
+	// Scope the type-check-stripping preprocessor to JS only. Its default ("true")
+	// parses every sandbox file and errors on the demo HTML partials (fragments
+	// with no <html>/<body>); matching by extension skips them.
+	disableTypeChecks: "**/*.js",
 	mutate: [
 		`${base}/**/*.js`,
 		`!${base}/**/*.test.js`,

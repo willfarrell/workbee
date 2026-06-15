@@ -37,7 +37,6 @@ export interface RouteConfig {
 	cacheKey: string;
 	cachePrefix: string;
 	cacheName: string;
-	cacheControlMaxAge: number;
 	methods: string[];
 	strategy: Strategy;
 	pathPattern: RegExp;
@@ -55,6 +54,12 @@ export interface WorkBeeConfig extends RouteConfig {
 	routes: RouteConfig[];
 	/** Call skipWaiting() on install. Default: true. */
 	skipWaiting?: boolean;
+	/**
+	 * When true (and the top-level config is the bare network proxy — default
+	 * strategy with no middlewares), unmatched requests skip respondWith so the
+	 * browser handles them natively. Resolved by compileConfig. Default: true.
+	 */
+	passthrough: boolean;
 }
 
 export interface PrecacheConfig extends RouteConfig {
@@ -97,9 +102,6 @@ export interface PartitionRouteConfig {
 
 /** Mutable object tracking opened caches. */
 export const openCaches: Record<string, Cache>;
-
-/** Matches `max-age=N` or `s-maxage=N` in a Cache-Control header. */
-export const cacheControlMaxAgeRegExp: RegExp;
 
 /**
  * Returns `response` with an Expires header computed from Cache-Control
@@ -166,7 +168,6 @@ export const defaultConfig: WorkBeeConfig;
 export interface UserRouteConfig {
 	cachePrefix?: string;
 	cacheName?: string;
-	cacheControlMaxAge?: number;
 	methods?: string[];
 	strategy?: Strategy;
 	pathPattern?: RegExp;
@@ -191,6 +192,8 @@ export interface UserConfig extends UserRouteConfig {
 	activate?: ActivateConfig;
 	routes?: UserRouteConfig[];
 	skipWaiting?: boolean;
+	/** Allow unmatched requests to bypass respondWith. Default: true. */
+	passthrough?: boolean;
 }
 
 /** Compiles a user-provided configuration into a fully resolved WorkBeeConfig. */

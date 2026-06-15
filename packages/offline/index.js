@@ -43,6 +43,21 @@ const offlineMiddleware = ({
 		"proxy-authorization",
 	];
 
+	// `fetch(request)` consumes the request body, so by the time `afterNetwork`
+	// runs the original request can no longer be cloned (and thus not serialized
+	// for the queue). Capture a clone in `beforeNetwork` — the last hook before
+	// the network touches the body — keyed by `event` (the stable per-request
+	// handle). The WeakMap entry is reclaimed automatically with the event.
+	const pendingClones = new WeakMap();
+	const beforeNetwork = (request, event, _config) => {
+		// Only queue-eligible methods can ever need their body replayed;
+		// skip the clone (and WeakMap write) for everything else (e.g. GET).
+		if (methods.includes(request.method)) {
+			pendingClones.set(event, request.clone());
+		}
+		return request;
+	};
+
 	// Enqueue and Retry submitted data
 	const afterNetwork = async (request, response, event, _config) => {
 		if (!methods.includes(request.method)) {
@@ -52,7 +67,10 @@ const offlineMiddleware = ({
 			return response;
 		}
 
-		event.waitUntil(enqueue(request));
+		// Prefer the pre-network clone (intact body). Fall back to `request` for
+		// callers that drive `afterNetwork` directly without a network round-trip
+		// (e.g. unit tests), where the body has not been consumed.
+		event.waitUntil(enqueue(pendingClones.get(event) ?? request));
 
 		return newResponse({ status: 202 });
 	};
@@ -210,7 +228,7 @@ const offlineMiddleware = ({
 		idbDatabase?.close();
 	};
 
-	return { afterNetwork, postMessageEvent, destroy };
+	return { beforeNetwork, afterNetwork, postMessageEvent, destroy };
 };
 
 export default offlineMiddleware;
@@ -243,10 +261,21 @@ const textContentType = (ct) =>
 	ct.includes("+json") ||
 	ct.includes("+xml");
 
+const base64ChunkSize = 0x2000;
 const bytesToBase64 = (bytes) => {
 	let binary = "";
-	for (let i = 0; i < bytes.length; i++)
-		binary += String.fromCharCode(bytes[i]);
+	// One fromCharCode call per chunk instead of per byte; per-byte string
+	// concatenation is quadratic-ish on large bodies. The chunk size stays well
+	// under the engine's argument-count limit.
+	// Stryker disable next-line EqualityOperator: equivalent. `<=` runs one
+	// extra iteration whose subarray is empty; fromCharCode() of zero args is
+	// "", so the encoded output is byte-identical.
+	for (let i = 0; i < bytes.length; i += base64ChunkSize) {
+		binary += String.fromCharCode.apply(
+			null,
+			bytes.subarray(i, i + base64ChunkSize),
+		);
+	}
 	return btoa(binary);
 };
 

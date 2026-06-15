@@ -63,13 +63,18 @@ const sessionMiddleware = ({
 				? [swOrigin]
 				: null;
 	const isAllowedOrigin = (url) => {
-		if (!allowedOrigins) return true;
-		try {
-			return allowedOrigins.includes(new URL(url).origin);
-		} catch {
-			// Stryker restore BlockStatement
-			return false;
-		}
+		// Fail closed: if no allow-list could be resolved (neither
+		// `authzAllowedOrigins` nor a derivable SW origin), never attach the token.
+		// A real ServiceWorker always resolves `self.location.origin`, so this only
+		// denies in degenerate environments where the origin is unknowable.
+		if (!allowedOrigins) return false;
+		// `URL.parse` returns null instead of throwing, so one call both
+		// validates and parses — `canParse` + `new URL()` would parse the url
+		// twice on every authorized request, and a try/catch's empty body would
+		// be an equivalent mutant (undefined and false are both falsy).
+		const parsed = URL.parse(url);
+		if (!parsed) return false;
+		return allowedOrigins.includes(parsed.origin);
 	};
 
 	if (authzPathPattern) {
@@ -102,12 +107,18 @@ const sessionMiddleware = ({
 					authnPathPattern.test(request.url)
 				) {
 					const token = await authnGetToken(response.clone());
-					const expiry = await authnGetExpiry(response.clone(), token);
-					sessionToken = token;
-					sessionExpiresInMilliseconds = expiry;
-					inactivityTimer();
-					sessionTimer();
-					// Remove Authorization from response
+					// Only establish a session when a token was actually extracted.
+					// A missing/empty token (e.g. the response carried no
+					// Authorization header) must not arm the expiry/inactivity timers
+					// or store an `undefined` token.
+					if (token) {
+						const expiry = await authnGetExpiry(response.clone(), token);
+						sessionToken = token;
+						sessionExpiresInMilliseconds = expiry;
+						inactivityTimer();
+						sessionTimer();
+					}
+					// Always strip Authorization so the token never reaches the page.
 					response = deleteHeaderFromResponse(response, authorizationHeader);
 				} else if (unauthnPathPattern?.test(request.url)) {
 					clearSession();

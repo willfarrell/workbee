@@ -307,6 +307,41 @@ test("sessionMiddleware: afterNetwork should extract token and strip Authorizati
 	session.destroy();
 });
 
+// --- afterNetwork must not start a session when no token is extracted ---
+test("sessionMiddleware: afterNetwork should not arm timers or store a token when none is extracted", async (_t) => {
+	// authnPathPattern + POST match, but the response carries no token. The
+	// guard must skip the expiry lookup and the timers entirely; without it,
+	// `sessionToken` would be set to `undefined` and the timers armed pointlessly.
+	const authnGetExpiry = mock.fn(() => 60000);
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => undefined,
+		authnGetExpiry,
+		expiryEventType: "session-expired",
+		postMessage: mock.fn(),
+	});
+
+	const request = new Request(`${domain}/auth/login`, { method: "POST" });
+	const response = new Response("{}", { status: 200 });
+	const result = await session.afterNetwork(
+		request,
+		response,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	// The expiry callback is never consulted (proves the body was skipped).
+	strictEqual(authnGetExpiry.mock.callCount(), 0);
+	// No token is stored: a later authz request is not authenticated.
+	const apiRequest = new Request(`${domain}/api/data`);
+	const after = session.before(apiRequest, {}, {});
+	strictEqual(after.headers.get("Authorization"), null);
+	// The response is still returned (Authorization stripping is a no-op here).
+	strictEqual(result instanceof Response, true);
+	session.destroy();
+});
+
 // --- sessionMiddleware without authnPathPattern/unauthnPathPattern ---
 test("sessionMiddleware: afterNetwork should be undefined without authnPathPattern and unauthnPathPattern", async (_t) => {
 	const session = sessionMiddleware({
@@ -1021,9 +1056,11 @@ test("sessionMiddleware: before should NOT attach token when request URL is unpa
 	session.destroy();
 });
 
-test("sessionMiddleware: before should attach token when SW origin cannot be derived", async (_t) => {
-	// Defensive path: when `self`/`location` is unavailable, fall back to
-	// attaching the token (preserve legacy behaviour rather than break auth).
+test("sessionMiddleware: before should NOT attach token when SW origin cannot be derived", async (_t) => {
+	// Fail closed: when `self`/`location` is unavailable no allow-list can be
+	// resolved, so the token must NOT be attached. The middleware must still
+	// build without throwing — `globalThis.self?.location?.origin` tolerates the
+	// missing `self` (the mutant dropping that optional chain would throw here).
 	const descriptor = Object.getOwnPropertyDescriptor(global, "self");
 	Object.defineProperty(global, "self", {
 		value: undefined,
@@ -1041,7 +1078,7 @@ test("sessionMiddleware: before should attach token when SW origin cannot be der
 
 	const apiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(apiRequest, {}, {});
-	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
 
 	Object.defineProperty(global, "self", descriptor);
@@ -1097,13 +1134,13 @@ test("sessionMiddleware: default authnGetExpiry should expire the session at exa
 });
 
 // --- Line 73: swOrigin uses optional chaining on `.location` ---
-test("sessionMiddleware: should attach token same-origin when self has no location", async (_t) => {
+test("sessionMiddleware: should build (and deny) when self has no location", async (_t) => {
 	// `self` is defined but `self.location` is undefined. The real
-	// `globalThis.self?.location?.origin` evaluates to undefined (so no allow-list
-	// is derived and the same-origin fallback collapses to "attach"). The mutant
+	// `globalThis.self?.location?.origin` evaluates to undefined, so no allow-list
+	// is derived and isAllowedOrigin fails closed. The mutant
 	// `globalThis.self?.location.origin` would throw a TypeError reading `.origin`
 	// of undefined while constructing the middleware. Asserting the middleware
-	// builds AND attaches the token proves the optional chain on `.location`.
+	// builds AND processes a request proves the optional chain on `.location`.
 	const descriptor = Object.getOwnPropertyDescriptor(global, "self");
 	Object.defineProperty(global, "self", {
 		value: {},
@@ -1120,11 +1157,11 @@ test("sessionMiddleware: should attach token same-origin when self has no locati
 	});
 	await authenticateSession(session);
 
-	// With swOrigin undefined and no allow-list, isAllowedOrigin returns true, so
-	// the matching request receives the token.
+	// With swOrigin undefined and no allow-list, isAllowedOrigin fails closed, so
+	// the matching request does NOT receive the token.
 	const apiRequest = new Request(`${domain}/api/data`);
 	const result = session.before(apiRequest, {}, {});
-	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
 
 	Object.defineProperty(global, "self", descriptor);

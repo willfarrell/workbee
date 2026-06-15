@@ -25,6 +25,50 @@
 npm install @work-bee/offline
 ```
 
+## Usage
+
+```js
+// service worker
+import offlineMiddleware from "@work-bee/offline";
+
+const offline = offlineMiddleware({
+  pollDelay: 0, // disable the internal timer; drain via the `online` message instead
+  enqueueEventType: "offline-enqueue",
+  dequeueEventType: "offline-dequeue",
+});
+
+// Drain the queue when the page reports the network is back.
+addEventListener("message", (event) => {
+  if (event.data?.type === "online") event.waitUntil(offline.postMessageEvent());
+});
+```
+
+```js
+// page — companion client posts `{ type: "online" }` on the window `online` event
+import registerOnline from "@work-bee/offline/client";
+const unregister = registerOnline();
+```
+
+## Options
+
+`offlineMiddleware(options?)` returns `{ beforeNetwork, afterNetwork, postMessageEvent, destroy }`. Wire it as a route middleware (the `beforeNetwork` hook captures the request body before the network consumes it, so queued `POST`/`PUT` bodies survive) and call `postMessageEvent()` to drain/replay the queue.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `methods` | `string[]` | `["POST", "PUT", "PATCH", "DELETE"]` | HTTP methods whose failed requests are queued. |
+| `statusCodes` | `number[]` | `[503, 504]` | Statuses treated as retryable (request stays queued); any other non-`2xx` is evicted as a permanent failure. |
+| `pollDelay` | `number` (ms) | `60000` | Delay before the internal timer re-attempts a drain. Set `0` to disable the timer and drive replay via the `online` message and/or Background Sync. |
+| `enqueueEventType` | `string` | — | `postMessage` type sent when a request is queued. |
+| `dequeueEventType` | `string` | — | `postMessage` type sent when a queued request replays successfully (`2xx`). |
+| `failedEventType` | `string` | — | `postMessage` type sent when a request is permanently evicted (see Data & Privacy). |
+| `quotaExceededEventType` | `string` | — | `postMessage` type sent when an IndexedDB write hits the storage quota. |
+| `redactHeaders` | `string[]` | `["authorization", "cookie", "set-cookie", "proxy-authorization"]` | Header names stripped before a request is persisted. |
+| `databaseName` | `string` | `"sw"` | IndexedDB database name. |
+| `objectStoreName` | `string` | `"offline"` | IndexedDB object store name. |
+| `postMessage` | `(message) => Promise<void>` | `postMessageToFocused` | How worker→page events are delivered. |
+
+The enqueue/dequeue/failed events carry the entry metadata (method, URL, redacted headers); the request body is never included.
+
 ## Data & Privacy
 
 The offline middleware queues failed requests in IndexedDB for replay when connectivity returns. Understanding what is stored is important for privacy compliance.

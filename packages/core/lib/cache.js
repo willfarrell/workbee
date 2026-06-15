@@ -5,11 +5,6 @@
 import { consoleError } from "./console.js";
 import { addHeaderToResponse } from "./http.js";
 
-// Matches a single max-age / s-maxage directive and captures its name and
-// seconds value. Used per-directive below so precedence is explicit rather
-// than relying on the order of an alternation against the whole header.
-export const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
-
 // Literal per-directive matchers — boundary-anchored so "max-age" can't match
 // inside another token, and literal (not `new RegExp(...)`) to avoid a dynamic-
 // RegExp/ReDoS SAST finding. Only two directives exist, so no constructor needed.
@@ -65,8 +60,21 @@ const getCache = async (cacheKey) => {
 };
 
 export const cacheMatch = async (cacheKey, request) => {
-	const cache = await getCache(cacheKey);
-	return cache.match(request);
+	const cache = openCaches[cacheKey];
+	if (cache) {
+		// Reads sit on the response critical path, so validate the open handle
+		// in parallel with the speculative read instead of paying a serial
+		// `caches.has()` round-trip on every hit. The read result is only
+		// returned when the cache still exists; otherwise fall through to
+		// getCache(), which drops the stale handle and reopens.
+		const [exists, response] = await Promise.all([
+			caches.has(cacheKey),
+			cache.match(request),
+		]);
+		if (exists) return response;
+	}
+	const freshCache = await getCache(cacheKey);
+	return freshCache.match(request);
 };
 
 export const cachePut = async (cacheKey, request, response, retry = 0) => {
@@ -113,12 +121,16 @@ export const cacheDeleteExpired = async (cacheKey) => {
 	// have a `response.url` of "" or one that differs from the request key, so
 	// `cache.delete(response.url)` would never purge them.
 	const requests = await cache.keys();
-	for (const request of requests ?? []) {
-		const response = await cache.match(request);
-		if (cacheExpired(response)) {
-			await cache.delete(request);
-		}
-	}
+	// Check (and purge) every entry concurrently; a serial match/delete pair
+	// per entry makes quota recovery O(entries) round-trips.
+	await Promise.all(
+		(requests ?? []).map(async (request) => {
+			const response = await cache.match(request);
+			if (cacheExpired(response)) {
+				await cache.delete(request);
+			}
+		}),
+	);
 };
 
 export const cachesDeleteExpired = async () => {

@@ -15,7 +15,7 @@
 			"default": "./index.js"
 		}
 	},
-	"types": "index.d.ts",
+	"types": "./index.d.ts",
 	"sideEffects": false,
 	"files": [
 		"index.js",

@@ -5,7 +5,6 @@ import { mock, test } from "node:test";
 import "../../../fixtures/helper.js";
 import {
 	applyExpires,
-	cacheControlMaxAgeRegExp,
 	cacheDeleteExpired,
 	cacheExpired,
 	cacheMatch,
@@ -14,22 +13,6 @@ import {
 } from "../index.js";
 
 test("cache", async (t) => {
-	// *** cacheControlMaxAgeRegExp *** //
-	await t.test(
-		"cacheControlMaxAgeRegExp: captures the directive name and full multi-digit value",
-		() => {
-			// `[0-9]+` (one-or-more) must capture every digit, not just the first,
-			// and must capture digits (not non-digits).
-			const match = "max-age=86400".match(cacheControlMaxAgeRegExp);
-			equal(match[1], "max-age");
-			equal(match[2], "86400");
-
-			const sMatch = "s-maxage=120".match(cacheControlMaxAgeRegExp);
-			equal(sMatch[1], "s-maxage");
-			equal(sMatch[2], "120");
-		},
-	);
-
 	// *** cacheExpired *** //
 	await t.test(
 		"cacheExpired: should return undefined for falsy response",
@@ -312,6 +295,73 @@ test("cache", async (t) => {
 
 			strictEqual(openCount, 2);
 			equal(matchFn.mock.callCount(), 1);
+		},
+	);
+
+	// *** cacheMatch fast path *** //
+	await t.test(
+		"cacheMatch: reads the open handle in parallel with caches.has validation",
+		async (tt) => {
+			const key = "parallel-cache";
+			const matchFn = mock.fn(() => Promise.resolve("hit"));
+			openCaches[key] = { match: matchFn };
+			const openFn = mock.fn();
+			const originalHas = globalThis.caches.has;
+			const originalOpen = globalThis.caches.open;
+			let resolveHas;
+			let hasCalls = 0;
+			globalThis.caches.has = () => {
+				hasCalls += 1;
+				if (hasCalls === 1) {
+					return new Promise((resolve) => {
+						resolveHas = resolve;
+					});
+				}
+				return Promise.resolve(true);
+			};
+			globalThis.caches.open = openFn;
+			tt.after(() => {
+				delete openCaches[key];
+				globalThis.caches.has = originalHas;
+				globalThis.caches.open = originalOpen;
+			});
+
+			const request = new Request("http://localhost:8080/test");
+			const resultPromise = cacheMatch(key, request);
+			// The speculative read must start before the handle validation has
+			// resolved — i.e. the two run in parallel, not serially.
+			equal(matchFn.mock.callCount(), 1);
+			resolveHas(true);
+			strictEqual(await resultPromise, "hit");
+			equal(matchFn.mock.callCount(), 1);
+			equal(openFn.mock.callCount(), 0);
+		},
+	);
+
+	await t.test(
+		"cacheMatch: reopens the cache when the open handle is stale (caches.has === false)",
+		async (tt) => {
+			const key = "stale-match-cache";
+			const staleMatchFn = mock.fn(() => Promise.resolve("stale"));
+			openCaches[key] = { match: staleMatchFn };
+			const freshMatchFn = mock.fn(() => Promise.resolve("fresh"));
+			const freshCache = { match: freshMatchFn };
+			const originalHas = globalThis.caches.has;
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.has = () => Promise.resolve(false);
+			globalThis.caches.open = () => Promise.resolve(freshCache);
+			tt.after(() => {
+				delete openCaches[key];
+				globalThis.caches.has = originalHas;
+				globalThis.caches.open = originalOpen;
+			});
+
+			const request = new Request("http://localhost:8080/test");
+			const result = await cacheMatch(key, request);
+			// The speculative stale read is discarded; the reopened cache answers.
+			strictEqual(result, "fresh");
+			equal(freshMatchFn.mock.callCount(), 1);
+			strictEqual(openCaches[key], freshCache);
 		},
 	);
 

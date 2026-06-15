@@ -63,6 +63,36 @@ test("idbSerializeRequest: roundtrips a binary (ArrayBuffer) body", async () => 
 	}
 });
 
+test("idbSerializeRequest: roundtrips a binary body larger than one base64 encode chunk", async () => {
+	// Spans multiple 0x2000-byte encode chunks plus a remainder so chunk
+	// boundaries (and the final partial chunk) are exercised.
+	const size = 0x2000 * 2 + 5;
+	const bytes = new Uint8Array(size);
+	for (let i = 0; i < size; i++) {
+		bytes[i] = i % 256;
+	}
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		headers: new Headers({ "Content-Type": "application/octet-stream" }),
+		body: bytes,
+	});
+
+	const serialized = await idbSerializeRequest(request);
+	strictEqual(serialized.body.encoding, "base64");
+	const restored = idbDeserializeRequest(serialized);
+	const restoredBytes = new Uint8Array(await restored.arrayBuffer());
+
+	strictEqual(restoredBytes.length, size);
+	let mismatch = -1;
+	for (let i = 0; i < size; i++) {
+		if (restoredBytes[i] !== i % 256) {
+			mismatch = i;
+			break;
+		}
+	}
+	strictEqual(mismatch, -1);
+});
+
 test("idbSerializeRequest: preserves all headers (redaction is middleware responsibility)", async () => {
 	const request = new Request(`${domain}/200`, {
 		method: "POST",
@@ -193,6 +223,57 @@ test("afterNetwork: enqueues network error POST and returns 202", async () => {
 	strictEqual(result.status, 202);
 	strictEqual(waitUntils.length, 1);
 	await Promise.all(waitUntils);
+	destroy();
+});
+
+test("beforeNetwork: clone lets a consumed request body still enqueue", async () => {
+	// In a real browser `fetch(request)` consumes the body, so by the time
+	// afterNetwork runs `request.clone()` (inside idbSerializeRequest) throws.
+	// beforeNetwork must capture a clone first. Here we reproduce the consumed
+	// state by reading the body, then assert the enqueue still succeeds.
+	const postMessageSpy = mock.fn();
+	const { beforeNetwork, afterNetwork, destroy } = await createOffline({
+		enqueueEventType: "enqueue",
+		postMessage: postMessageSpy,
+	});
+	const request = new Request(`${domain}/503`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ data: "keep-me" }),
+	});
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+
+	// Stash the pre-network clone, then consume the original body the way
+	// `fetch(request)` would.
+	beforeNetwork(request, event, {});
+	await request.text();
+	strictEqual(request.bodyUsed, true);
+
+	const response = new Response("", { status: 503 });
+	const result = await afterNetwork(request, response, event, {});
+	await Promise.all(waitUntils);
+
+	// Without the clone, idbSerializeRequest would throw on the disturbed
+	// request and the enqueue notification would never fire.
+	strictEqual(result.status, 202);
+	strictEqual(postMessageSpy.mock.callCount(), 1);
+	strictEqual(postMessageSpy.mock.calls[0].arguments[0].method, "POST");
+	destroy();
+});
+
+test("beforeNetwork: skips the clone for methods that can never enqueue", async () => {
+	const { beforeNetwork, destroy } = await createOffline();
+	// GET is not in the default queue methods, so the hot path must not pay
+	// for a clone or WeakMap write.
+	const cloneFn = mock.fn();
+	const request = { method: "GET", clone: cloneFn };
+	const event = {};
+
+	const result = beforeNetwork(request, event, {});
+
+	strictEqual(result, request);
+	strictEqual(cloneFn.mock.callCount(), 0);
 	destroy();
 });
 

@@ -916,6 +916,8 @@ test("events", async (t) => {
 			middlewares: [],
 			strategy: strategyNetworkOnly,
 			routes: [],
+			// The bare default proxy would otherwise bypass respondWith.
+			passthrough: false,
 		});
 
 		eventFetch(event, config);
@@ -924,6 +926,45 @@ test("events", async (t) => {
 		const response = await respondWithFn.mock.calls[0].arguments[0];
 		equal(response.status, 200);
 	});
+
+	await t.test(
+		"eventFetch: skips respondWith when no route matches and the config is the bare default proxy",
+		async () => {
+			const respondWithFn = mock.fn();
+			const event = {
+				request: new Request("http://localhost:8080/200", { method: "GET" }),
+				respondWith: respondWithFn,
+				waitUntil: mock.fn(),
+			};
+
+			const config = compileConfig({ routes: [] });
+			eventFetch(event, config);
+
+			// Unmatched + passthrough-eligible: the browser handles it natively.
+			equal(respondWithFn.mock.callCount(), 0);
+		},
+	);
+
+	await t.test(
+		"eventFetch: calls respondWith when a route matches even when passthrough is enabled",
+		async () => {
+			const respondWithFn = mock.fn();
+			const event = {
+				request: new Request("http://localhost:8080/200", { method: "GET" }),
+				respondWith: respondWithFn,
+				waitUntil: mock.fn(),
+			};
+
+			const config = compileConfig({
+				routes: [{ pathPattern: /200$/, methods: ["GET"] }],
+			});
+			eventFetch(event, config);
+
+			equal(respondWithFn.mock.callCount(), 1);
+			const response = await respondWithFn.mock.calls[0].arguments[0];
+			equal(response.status, 200);
+		},
+	);
 
 	// *** backgroundFetchSuccessEvent *** //
 	await t.test(
@@ -1311,6 +1352,33 @@ test("events", async (t) => {
 			// newResponse({ body: response }) — an empty object would yield "".
 			const storedResponse = putFn.mock.calls[0].arguments[1];
 			equal(await storedResponse.text(), "hello");
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: hands the cache write to messageEvent.waitUntil",
+		async (tt) => {
+			// On a real ExtendableMessageEvent the write must extend the event via
+			// `waitUntil` so the worker is not killed mid-write; the same promise is
+			// also returned to the caller.
+			const putFn = mock.fn(() => Promise.resolve());
+			openCaches["sw-default"] = { put: putFn };
+			tt.after(() => delete openCaches["sw-default"]);
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			const waitUntil = mock.fn();
+			const returned = handler({
+				source: { url: "http://localhost:8080/page" },
+				waitUntil,
+				data: { request: "http://localhost:8080/test", response: "hi" },
+			});
+			strictEqual(waitUntil.mock.callCount(), 1);
+			strictEqual(waitUntil.mock.calls[0].arguments[0], returned);
+			await returned;
+			equal(putFn.mock.callCount(), 1);
 		},
 	);
 

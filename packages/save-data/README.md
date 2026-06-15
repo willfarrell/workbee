@@ -25,6 +25,25 @@
 npm install @work-bee/save-data
 ```
 
+## Usage
+
+```js
+import saveDataMiddleware from "@work-bee/save-data";
+import { strategyCacheOnly } from "@work-bee/core";
+
+// When the request carries `Save-Data: on`, swap to a lighter strategy for
+// this request only; the original strategy is restored afterwards.
+saveDataMiddleware({ saveDataStrategy: strategyCacheOnly });
+```
+
+## Options
+
+`saveDataMiddleware(options?)` returns `{ before, after }`. It reads the [`Save-Data`](https://developer.mozilla.org/docs/Web/HTTP/Headers/Save-Data) request header and only swaps the strategy when it is `on`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `saveDataStrategy` | `Strategy` | `strategyCacheOnly` | Strategy used for the current request when `Save-Data: on` is present. |
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).

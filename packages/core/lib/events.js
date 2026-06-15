@@ -124,15 +124,17 @@ const eventActivateWaitUntil = async (_event, config) => {
 };
 
 export const eventFetch = (event, config) => {
-	event.respondWith(eventFetchRespondWith(event, config));
+	const routeConfig = findRouteConfig(config, event.request);
+	// When no route matched and the top-level config is the bare network proxy
+	// (default strategy, no middlewares), skip respondWith entirely so the
+	// browser handles the request natively — this avoids piping every byte of
+	// unmatched traffic through the worker. Opt out with `passthrough: false`.
+	if (routeConfig === config && config.passthrough) return;
+	event.respondWith(eventFetchRespondWith(event, routeConfig));
 };
 
-const eventFetchRespondWith = async (event, config) => {
-	const result = await fetchStrategy(
-		event.request,
-		event,
-		findRouteConfig(config, event.request),
-	);
+const eventFetchRespondWith = async (event, routeConfig) => {
+	const result = await fetchStrategy(event.request, event, routeConfig);
 	// fetchStrategy returns Response | Error; convert Error back to a rejection
 	// so `respondWith` falls through to the browser's default handling instead
 	// of silently breaking with a non-Response value.
@@ -231,7 +233,15 @@ export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 		if (typeof response === "string") {
 			response = newResponse({ body: response });
 		}
-		return cachePut(routeConfig.cacheKey, request, response);
+		// Keep the worker alive until the write lands and swallow failures so a
+		// rejected cache write never becomes an unhandled rejection. `waitUntil`
+		// is only present on a real ExtendableMessageEvent; the optional call lets
+		// the handler also be driven directly (e.g. awaited) without one.
+		const promise = cachePut(routeConfig.cacheKey, request, response).catch(
+			consoleError,
+		);
+		messageEvent.waitUntil?.(promise);
+		return promise;
 	};
 };
 

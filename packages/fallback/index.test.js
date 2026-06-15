@@ -238,6 +238,31 @@ test("fallbackMiddleware.after: Should handle a nullish (undefined) response wit
 	equal(cache.match.callCount, 1);
 });
 
+test("fallbackMiddleware.after: Should fetch the fallback as a GET, not copy the original request", async (_t) => {
+	// The failing request may be a POST (or, in a browser, a navigation with
+	// `mode: "navigate"` which makes `new Request(url, request)` throw). The
+	// fallback asset must be fetched as a plain GET — passing the original
+	// `request` as RequestInit would copy its method/body. With the buggy
+	// `newRequest(url, request)` the cached lookup would carry method POST.
+	const request = new Request(`${domain}/api/data`, {
+		method: "POST",
+		body: "payload",
+	});
+	const error = new Error("network failure");
+	const fallbackPath = `${domain}/cache/found`;
+
+	const fallback = fallbackMiddleware({
+		path: fallbackPath,
+		fallbackStrategy: strategyCacheOnly,
+	});
+	const { cache, event, config } = setupMocks(undefined, fallbackPath);
+	await fallback.after(request, error, event, config);
+
+	const fallbackRequest = cache.match.args[0][0];
+	equal(fallbackRequest.method, "GET");
+	equal(fallbackRequest.url, fallbackPath);
+});
+
 test("fallbackMiddleware.after: Should reject when after-hook is given a value that breaks an unguarded ok access", async (_t) => {
 	const request = new Request(`${domain}/200`, { method: "GET" });
 	const fallbackPath = `${domain}/cache/found`;

@@ -25,6 +25,31 @@
 npm install @work-bee/fallback
 ```
 
+## Usage
+
+```js
+import fallbackMiddleware from "@work-bee/fallback";
+import { strategyCacheFirst } from "@work-bee/core";
+
+// Serve a precached offline page when a navigation fails.
+fallbackMiddleware({
+  path: "/offline.html",
+  statusCodes: [503, 504],
+  fallbackStrategy: strategyCacheFirst, // default
+});
+```
+
+## Options
+
+`fallbackMiddleware(options?)` returns `{ after }`. The fallback resource is always fetched as a `GET` (the original request's method/body are not copied).
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `path` | `string` | — (**required**) | Fallback resource path. Any `{status}` token is replaced with the failed response's status code. Throws if missing or empty. |
+| `pathPattern` | `RegExp` | — | When set, the fallback URL is derived from `request.url.replace(pathPattern, path)`, so `path` may reference capture groups (e.g. `$1`). |
+| `statusCodes` | `number[]` | — | HTTP status codes that trigger the fallback. With no `statusCodes`, only a thrown/non-`Response` error (e.g. a network failure) falls back — an HTTP error response passes through unless its status is listed. |
+| `fallbackStrategy` | `Strategy` | `strategyCacheFirst` | Strategy used to fetch the fallback resource. |
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).

@@ -5,9 +5,11 @@ import { strategyCacheOnly } from "@work-bee/core";
 const saveDataMiddleware = ({ saveDataStrategy } = {}) => {
 	const originalStrategies = new WeakMap();
 	const before = (request, event, config) => {
-		originalStrategies.set(event, config.strategy);
-		const saveData = request.headers.get("Save-Data") === "on";
-		if (saveData) {
+		// Only remember the original strategy when actually overriding it; the
+		// common (no Save-Data) path then skips the WeakMap write entirely and
+		// `after` has nothing to restore.
+		if (request.headers.get("Save-Data") === "on") {
+			originalStrategies.set(event, config.strategy);
 			config.strategy = saveDataStrategy ?? strategyCacheOnly;
 		}
 		return request;

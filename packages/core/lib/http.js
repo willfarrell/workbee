@@ -23,7 +23,9 @@ export const isRequest = (value) => value instanceof Request;
 export const newRequest = (url, options) => new Request(url, options);
 
 export const addHeaderToRequest = (request, key, value) => {
-	const headers = new Headers(headersGetAll(request.headers));
+	// `Headers` accepts another Headers instance directly; skip the plain-object
+	// round-trip through headersGetAll on this per-request path.
+	const headers = new Headers(request.headers);
 	headers.set(key, value);
 	return new Request(request, { headers });
 };
@@ -48,13 +50,13 @@ const rebuildResponse = (response, headers) => {
 };
 
 export const addHeaderToResponse = (response, key, value) => {
-	const headers = new Headers(headersGetAll(response.headers));
+	const headers = new Headers(response.headers);
 	headers.set(key, value);
 	return rebuildResponse(response, headers);
 };
 
 export const deleteHeaderFromResponse = (response, key) => {
-	const headers = new Headers(headersGetAll(response.headers));
+	const headers = new Headers(response.headers);
 	headers.delete(key);
 	return rebuildResponse(response, headers);
 };
