@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/save-data",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "save-data workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -26,7 +26,7 @@
 		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"dependencies": {
-		"@work-bee/core": "0.2.0"
+		"@work-bee/core": "0.3.0"
 	},
 	"repository": {
 		"type": "git",
