@@ -34,7 +34,7 @@ jobs:
           egress-policy: audit
           disable-telemetry: true
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
       - name: Setup Node.js ${{ env.NODE_VERSION }}
@@ -82,7 +82,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
       - name: Build Attestations
         if: ${{ env.changed == 'true' }}
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
             **/*.tgz
@@ -123,7 +123,7 @@ jobs:
           name: ${{ needs.build.outputs.tag }}
       - name: Release
         # Replaces actions/create-release & actions/upload-release-asset (deprecated)
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0 # zizmor: ignore[superfluous-actions] prefer maintained action over inline `gh release` script
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1 # zizmor: ignore[superfluous-actions] prefer maintained action over inline `gh release` script
         with:
           draft: true
           prerelease: ${{ needs.build.outputs.prerelease }}
