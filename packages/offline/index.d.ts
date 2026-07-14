@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-import type { AfterMiddleware } from "@work-bee/core";
+import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 
 export interface SerializedRequest {
 	method: string;
@@ -35,11 +35,14 @@ interface OfflineOptions {
 	enqueueEventType?: string;
 	quotaExceededEventType?: string;
 	dequeueEventType?: string;
+	failedEventType?: string;
+	databaseName?: string;
 	objectStoreName?: string;
 	redactHeaders?: string[];
 }
 
 interface OfflineMiddlewareResult {
+	beforeNetwork: BeforeMiddleware;
 	afterNetwork: AfterMiddleware;
 	postMessageEvent: () => Promise<void>;
 	destroy: () => void;

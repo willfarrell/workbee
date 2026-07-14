@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/inactivity",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "inactivity workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -20,7 +20,7 @@
 			"default": "./client.js"
 		}
 	},
-	"types": "index.d.ts",
+	"types": "./index.d.ts",
 	"sideEffects": false,
 	"files": [
 		"index.js",
@@ -29,7 +29,8 @@
 		"client.d.ts"
 	],
 	"scripts": {
-		"test": "node --test"
+		"test": "node --test",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"repository": {
 		"type": "git",
@@ -41,7 +42,7 @@
 	},
 	"homepage": "https://workbee.js.org/docs/packages/inactivity",
 	"dependencies": {
-		"@work-bee/core": "0.2.0"
+		"@work-bee/core": "0.3.0"
 	},
 	"keywords": [
 		"workbee",

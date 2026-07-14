@@ -25,6 +25,23 @@
 npm install @work-bee/cache-control
 ```
 
+## Usage
+
+```js
+import cacheControlMiddleware from "@work-bee/cache-control";
+
+// As a route middleware — overrides Cache-Control on the response.
+cacheControlMiddleware({ cacheControl: "max-age=60" });
+```
+
+## Options
+
+`cacheControlMiddleware(options)` returns `{ afterNetwork }`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cacheControl` | `string` | — (**required**) | Value written to the response's `Cache-Control` header. Throws if missing or empty. |
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).

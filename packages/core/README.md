@@ -25,13 +25,48 @@
 npm install @work-bee/core
 ```
 
+## Usage
+
+```js
+import {
+  compileConfig,
+  eventInstall,
+  eventActivate,
+  eventFetch,
+  pathPattern,
+  strategyNetworkFirst,
+} from "@work-bee/core";
+
+const config = compileConfig({
+  routes: [
+    { pathPattern: pathPattern("/api/"), strategy: strategyNetworkFirst },
+  ],
+});
+
+addEventListener("install", (event) => eventInstall(event, config));
+addEventListener("activate", (event) => eventActivate(event, config));
+addEventListener("fetch", (event) => eventFetch(event, config));
+```
+
+## Exports
+
+Full reference: [workbee.js.org](https://workbee.js.org). The main groups:
+
+- **Config:** `compileConfig`, `compileRoute`, `defaultConfig`, `pathPattern`.
+- **Events:** `eventInstall`, `eventActivate`, `eventFetch`, `cacheOverrideEvent`, `backgroundFetchSuccessEvent`, `backgroundFetchFailEvent`.
+- **Strategies:** `strategyNetworkOnly`, `strategyCacheOnly`, `strategyNetworkFirst`, `strategyCacheFirst`, `strategyStaleWhileRevalidate`, `strategyStaleIfError`, `strategyIgnore`, `strategyCacheFirstIgnore`, `strategyStatic`, `strategyHTMLPartition`, `strategyPartition`.
+- **Cache:** `cachePut`, `cacheMatch`, `cacheExpired`, `cacheDeleteExpired`, `cachesDeleteExpired`, `cachesDelete`, `applyExpires`.
+- **HTTP / messaging helpers:** `newRequest`, `newResponse`, `addHeaderToRequest`, `addHeaderToResponse`, `deleteHeaderFromResponse`, `headersGetAll`, `urlRemoveHash`, `isRequest`, `isResponse`, `postMessageToAll`, `postMessageToFocused`, plus method (`getMethod`…) and header (`authorizationHeader`) constants.
+
+Lifecycle hooks run in the order: `before` → `beforeNetwork` → *strategy* → `afterNetwork` → `after`.
+
 ## Data & Privacy
 
 The core module uses the Cache API to store HTTP responses for performance. Understanding what is cached is important for privacy compliance.
 
 **What is stored:** Full HTTP responses, which may contain user-specific data depending on the API.
 
-**Retention:** Controlled by `Cache-Control` response headers and the `cacheControlMaxAge` config option.
+**Retention:** Controlled by each response's `Cache-Control` (`max-age`/`s-maxage`) or `Expires` header — these are normalised to an `Expires` header (`applyExpires`) and enforced by `cacheExpired` / `cachesDeleteExpired`.
 
 **Cleanup:**
 - Call `cachesDelete()` on user logout to clear cached data for authenticated routes

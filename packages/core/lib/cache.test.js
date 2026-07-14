@@ -7,6 +7,7 @@ import {
 	applyExpires,
 	cacheDeleteExpired,
 	cacheExpired,
+	cacheMatch,
 	cachePut,
 	openCaches,
 } from "../index.js";
@@ -54,6 +55,21 @@ test("cache", async (t) => {
 		},
 	);
 
+	await t.test(
+		"cacheExpired: an entry expiring exactly now is NOT yet expired (strict <)",
+		(tt) => {
+			// Boundary: when Expires === now the entry is still fresh. `<` returns
+			// false here; `<=` would wrongly report it as expired.
+			const expires = "Thu, 01 Jan 2026 00:00:00 GMT";
+			const now = new Date(expires).getTime();
+			tt.mock.method(Date, "now", () => now);
+			const response = new Response("", {
+				headers: new Headers({ Expires: expires }),
+			});
+			strictEqual(cacheExpired(response), false);
+		},
+	);
+
 	// *** cachePut *** //
 	await t.test(
 		"cachePut: should store response in cache via openCaches",
@@ -82,20 +98,18 @@ test("cache", async (t) => {
 			const expiredResponse = new Response("", {
 				headers: new Headers({ Expires: pastDate }),
 			});
-			Object.defineProperty(expiredResponse, "url", {
-				value: "http://localhost:8080/expired",
-			});
-
 			const validResponse = new Response("", {
 				headers: new Headers({ Expires: futureDate }),
 			});
-			Object.defineProperty(validResponse, "url", {
-				value: "http://localhost:8080/valid",
-			});
+
+			const expiredKey = new Request("http://localhost:8080/expired");
+			const validKey = new Request("http://localhost:8080/valid");
 
 			const deleteFn = mock.fn();
 			const mockCache = {
-				matchAll: () => Promise.resolve([expiredResponse, validResponse]),
+				keys: () => Promise.resolve([expiredKey, validKey]),
+				match: (req) =>
+					Promise.resolve(req === expiredKey ? expiredResponse : validResponse),
 				delete: deleteFn,
 			};
 
@@ -106,10 +120,7 @@ test("cache", async (t) => {
 			await cacheDeleteExpired("test-expired");
 
 			equal(deleteFn.mock.callCount(), 1);
-			equal(
-				deleteFn.mock.calls[0].arguments[0],
-				"http://localhost:8080/expired",
-			);
+			equal(deleteFn.mock.calls[0].arguments[0], expiredKey);
 
 			// Restore
 			globalThis.caches.open = originalOpen;
@@ -117,11 +128,15 @@ test("cache", async (t) => {
 	);
 
 	await t.test(
-		"cacheDeleteExpired: should handle matchAll returning nullish",
+		"cacheDeleteExpired: should handle keys returning nullish",
 		async () => {
 			const deleteFn = mock.fn();
+			// match must never be invoked when keys() is nullish: the `?? []`
+			// fallback yields an empty list, so the loop body never runs.
+			const matchFn = mock.fn(() => Promise.resolve(undefined));
 			const mockCache = {
-				matchAll: () => Promise.resolve(null),
+				keys: () => Promise.resolve(null),
+				match: matchFn,
 				delete: deleteFn,
 			};
 
@@ -130,6 +145,7 @@ test("cache", async (t) => {
 
 			await cacheDeleteExpired("test-null");
 
+			equal(matchFn.mock.callCount(), 0);
 			equal(deleteFn.mock.callCount(), 0);
 
 			globalThis.caches.open = originalOpen;
@@ -144,13 +160,12 @@ test("cache", async (t) => {
 			const validResponse = new Response("", {
 				headers: new Headers({ Expires: futureDate }),
 			});
-			Object.defineProperty(validResponse, "url", {
-				value: "http://localhost:8080/valid",
-			});
+			const validKey = new Request("http://localhost:8080/valid");
 
 			const deleteFn = mock.fn();
 			const mockCache = {
-				matchAll: () => Promise.resolve([validResponse]),
+				keys: () => Promise.resolve([validKey]),
+				match: () => Promise.resolve(validResponse),
 				delete: deleteFn,
 			};
 
@@ -162,6 +177,47 @@ test("cache", async (t) => {
 			equal(deleteFn.mock.callCount(), 0);
 
 			// Restore
+			globalThis.caches.open = originalOpen;
+		},
+	);
+
+	await t.test(
+		"cacheDeleteExpired: should delete expired entries keyed by request when response.url is empty",
+		async () => {
+			const pastDate = new Date(Date.now() - 86400 * 1000).toString();
+			const futureDate = new Date(Date.now() + 86400 * 1000).toString();
+
+			// Synthetic/redirected responses have an empty url; entries are keyed
+			// by request.url, so purging must enumerate request keys.
+			const expiredResponse = new Response("", {
+				headers: new Headers({ Expires: pastDate }),
+			});
+			Object.defineProperty(expiredResponse, "url", { value: "" });
+
+			const validResponse = new Response("", {
+				headers: new Headers({ Expires: futureDate }),
+			});
+			Object.defineProperty(validResponse, "url", { value: "" });
+
+			const expiredKey = new Request("http://localhost:8080/expired");
+			const validKey = new Request("http://localhost:8080/valid");
+
+			const deleteFn = mock.fn();
+			const mockCache = {
+				keys: () => Promise.resolve([expiredKey, validKey]),
+				match: (req) =>
+					Promise.resolve(req === expiredKey ? expiredResponse : validResponse),
+				delete: deleteFn,
+			};
+
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.open = () => Promise.resolve(mockCache);
+
+			await cacheDeleteExpired("test-empty-url");
+
+			equal(deleteFn.mock.callCount(), 1);
+			equal(deleteFn.mock.calls[0].arguments[0], expiredKey);
+
 			globalThis.caches.open = originalOpen;
 		},
 	);
@@ -194,6 +250,120 @@ test("cache", async (t) => {
 		strictEqual(openCount, 1);
 		equal(putFn.mock.callCount(), 2);
 	});
+
+	// *** transient caches.open() rejection must not wedge future reads *** //
+	await t.test(
+		"getCache: a transient caches.open() rejection does not wedge subsequent calls",
+		async (tt) => {
+			const key = "transient-open-cache";
+			delete openCaches[key];
+			const originalOpen = globalThis.caches.open;
+			const originalHas = globalThis.caches.has;
+			tt.after(() => {
+				delete openCaches[key];
+				globalThis.caches.open = originalOpen;
+				globalThis.caches.has = originalHas;
+			});
+
+			// openCaches is empty until a successful open, so caches.has must be
+			// falsy for this key for getCache to attempt (re)opening each call.
+			globalThis.caches.has = () => Promise.resolve(false);
+
+			let openCount = 0;
+			const matchFn = mock.fn(() => Promise.resolve(undefined));
+			globalThis.caches.open = () => {
+				openCount += 1;
+				if (openCount === 1) {
+					return Promise.reject(new Error("transient open failure"));
+				}
+				return Promise.resolve({ match: matchFn });
+			};
+
+			const request = new Request("http://localhost:8080/test");
+
+			let firstError;
+			try {
+				await cacheMatch(key, request);
+			} catch (e) {
+				firstError = e;
+			}
+			strictEqual(firstError?.message, "transient open failure");
+
+			// The second call must succeed rather than re-returning the cached
+			// rejected promise from inFlightOpens.
+			await cacheMatch(key, request);
+
+			strictEqual(openCount, 2);
+			equal(matchFn.mock.callCount(), 1);
+		},
+	);
+
+	// *** cacheMatch fast path *** //
+	await t.test(
+		"cacheMatch: reads the open handle in parallel with caches.has validation",
+		async (tt) => {
+			const key = "parallel-cache";
+			const matchFn = mock.fn(() => Promise.resolve("hit"));
+			openCaches[key] = { match: matchFn };
+			const openFn = mock.fn();
+			const originalHas = globalThis.caches.has;
+			const originalOpen = globalThis.caches.open;
+			let resolveHas;
+			let hasCalls = 0;
+			globalThis.caches.has = () => {
+				hasCalls += 1;
+				if (hasCalls === 1) {
+					return new Promise((resolve) => {
+						resolveHas = resolve;
+					});
+				}
+				return Promise.resolve(true);
+			};
+			globalThis.caches.open = openFn;
+			tt.after(() => {
+				delete openCaches[key];
+				globalThis.caches.has = originalHas;
+				globalThis.caches.open = originalOpen;
+			});
+
+			const request = new Request("http://localhost:8080/test");
+			const resultPromise = cacheMatch(key, request);
+			// The speculative read must start before the handle validation has
+			// resolved — i.e. the two run in parallel, not serially.
+			equal(matchFn.mock.callCount(), 1);
+			resolveHas(true);
+			strictEqual(await resultPromise, "hit");
+			equal(matchFn.mock.callCount(), 1);
+			equal(openFn.mock.callCount(), 0);
+		},
+	);
+
+	await t.test(
+		"cacheMatch: reopens the cache when the open handle is stale (caches.has === false)",
+		async (tt) => {
+			const key = "stale-match-cache";
+			const staleMatchFn = mock.fn(() => Promise.resolve("stale"));
+			openCaches[key] = { match: staleMatchFn };
+			const freshMatchFn = mock.fn(() => Promise.resolve("fresh"));
+			const freshCache = { match: freshMatchFn };
+			const originalHas = globalThis.caches.has;
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.has = () => Promise.resolve(false);
+			globalThis.caches.open = () => Promise.resolve(freshCache);
+			tt.after(() => {
+				delete openCaches[key];
+				globalThis.caches.has = originalHas;
+				globalThis.caches.open = originalOpen;
+			});
+
+			const request = new Request("http://localhost:8080/test");
+			const result = await cacheMatch(key, request);
+			// The speculative stale read is discarded; the reopened cache answers.
+			strictEqual(result, "fresh");
+			equal(freshMatchFn.mock.callCount(), 1);
+			strictEqual(openCaches[key], freshCache);
+		},
+	);
 
 	// *** cachePut with caches.open *** //
 	await t.test(
@@ -265,13 +435,23 @@ test("cache", async (t) => {
 			});
 			openCaches["quota-cache"] = { put: putFn };
 
+			// retry 0 must purge expired entries from THIS cache. Seed one expired
+			// entry so the same-cache purge has observable work to do.
+			const pastDate = new Date(Date.now() - 86400 * 1000).toString();
+			const expiredResponse = new Response("", {
+				headers: new Headers({ Expires: pastDate }),
+			});
+			const expiredKey = new Request("http://localhost:8080/expired");
 			const deleteFn = mock.fn();
-			const originalOpen = globalThis.caches.open;
-			globalThis.caches.open = () =>
+			const openSpy = mock.fn(() =>
 				Promise.resolve({
-					matchAll: () => Promise.resolve([]),
+					keys: () => Promise.resolve([expiredKey]),
+					match: () => Promise.resolve(expiredResponse),
 					delete: deleteFn,
-				});
+				}),
+			);
+			const originalOpen = globalThis.caches.open;
+			globalThis.caches.open = openSpy;
 			tt.after(() => {
 				delete openCaches["quota-cache"];
 				globalThis.caches.open = originalOpen;
@@ -283,6 +463,9 @@ test("cache", async (t) => {
 			await cachePut("quota-cache", request, response);
 
 			equal(putFn.mock.callCount(), 2);
+			// retry 0 ran cacheDeleteExpired("quota-cache"), purging the expired entry.
+			equal(deleteFn.mock.callCount(), 1);
+			equal(deleteFn.mock.calls[0].arguments[0], expiredKey);
 		},
 	);
 
@@ -291,6 +474,9 @@ test("cache", async (t) => {
 			throw new TypeError("some other error");
 		});
 		openCaches["error-cache"] = { put: putFn };
+		// A non-Quota error must be logged and rethrown immediately — never
+		// swallowed into the retry path.
+		const errorSpy = tt.mock.method(console, "error", () => {});
 		tt.after(() => delete openCaches["error-cache"]);
 
 		const request = new Request("http://localhost:8080/test");
@@ -304,6 +490,11 @@ test("cache", async (t) => {
 			equal(e.name, "TypeError");
 		}
 		equal(threw, true);
+		// Immediate failure: put is attempted exactly once (no quota-style retry)
+		// and the error is surfaced via consoleError.
+		equal(putFn.mock.callCount(), 1);
+		equal(errorSpy.mock.callCount(), 1);
+		equal(errorSpy.mock.calls[0].arguments[0], "TypeError");
 	});
 
 	await t.test(
@@ -319,10 +510,12 @@ test("cache", async (t) => {
 			const originalKeys = globalThis.caches.keys;
 			globalThis.caches.open = () =>
 				Promise.resolve({
-					matchAll: () => Promise.resolve([]),
+					keys: () => Promise.resolve([]),
+					match: () => Promise.resolve(undefined),
 					delete: mock.fn(),
 				});
-			globalThis.caches.keys = () => Promise.resolve([]);
+			const keysSpy = mock.fn(() => Promise.resolve([]));
+			globalThis.caches.keys = keysSpy;
 			tt.after(() => {
 				delete openCaches["quota-cache-2"];
 				globalThis.caches.open = originalOpen;
@@ -341,6 +534,9 @@ test("cache", async (t) => {
 			strictEqual(caught?.name, "QuotaExceededError");
 			// initial + retry 0 (same-cache purge) + retry 1 (all-caches purge) = 3.
 			equal(putFn.mock.callCount(), 3);
+			// retry 1 ran cachesDeleteExpired(), which enumerates every cache via
+			// caches.keys(); the same-cache purge (retry 0) never calls caches.keys.
+			equal(keysSpy.mock.callCount(), 1);
 		},
 	);
 
@@ -354,13 +550,12 @@ test("cache", async (t) => {
 			const expiredResponse = new Response("", {
 				headers: new Headers({ Expires: pastDate }),
 			});
-			Object.defineProperty(expiredResponse, "url", {
-				value: "http://localhost:8080/expired",
-			});
+			const expiredKey = new Request("http://localhost:8080/expired");
 
 			const deleteFn = mock.fn();
 			const mockCache = {
-				matchAll: () => Promise.resolve([expiredResponse]),
+				keys: () => Promise.resolve([expiredKey]),
+				match: () => Promise.resolve(expiredResponse),
 				delete: deleteFn,
 			};
 
@@ -369,9 +564,12 @@ test("cache", async (t) => {
 			globalThis.caches.keys = () => Promise.resolve(["cache-a", "cache-b"]);
 			globalThis.caches.open = () => Promise.resolve(mockCache);
 
-			await cachesDeleteExpired();
+			const settled = await cachesDeleteExpired();
 
 			equal(deleteFn.mock.callCount(), 2);
+			// One settled result per cache and no more — the accumulator starts
+			// empty, so a seeded element would inflate this to 3.
+			equal(settled.length, 2);
 
 			globalThis.caches.keys = originalKeys;
 			globalThis.caches.open = originalOpen;
@@ -438,7 +636,11 @@ test("cache", async (t) => {
 			const deletedKeys = [];
 			const originalKeys = globalThis.caches.keys;
 			const originalDelete = globalThis.caches.delete;
-			globalThis.caches.keys = () => Promise.resolve(["sw-default", "sw-old"]);
+			// Include a key that matches a would-be seeded default ("Stryker was
+			// here"): with the real empty default, EVERY cache must be deleted, so
+			// this key is purged too. A non-empty default would wrongly preserve it.
+			globalThis.caches.keys = () =>
+				Promise.resolve(["Stryker was here", "sw-default", "sw-old"]);
 			globalThis.caches.delete = mock.fn((key) => {
 				deletedKeys.push(key);
 				return Promise.resolve(true);
@@ -446,7 +648,8 @@ test("cache", async (t) => {
 
 			await cachesDelete();
 
-			equal(deletedKeys.length, 2);
+			equal(deletedKeys.length, 3);
+			strictEqual(deletedKeys.includes("Stryker was here"), true);
 
 			globalThis.caches.keys = originalKeys;
 			globalThis.caches.delete = originalDelete;
@@ -518,6 +721,46 @@ test("cache", async (t) => {
 
 			strictEqual(result, response);
 			strictEqual(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: ignores max-age embedded inside a larger token (boundary-anchored)",
+		async () => {
+			// The directive matchers are anchored to ^ / comma / whitespace so
+			// "max-age" inside a non-standard token like "x-max-age=60" (preceded by
+			// a non-boundary "-") must NOT be treated as the real max-age directive.
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "x-max-age=60",
+					Date: new Date().toString(),
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			strictEqual(result, response);
+			strictEqual(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: matches max-age after a comma+space boundary",
+		async () => {
+			// A whitespace boundary must still match: "public, max-age=60" has a
+			// space immediately before "max-age".
+			const date = new Date().toString();
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "public, max-age=60",
+					Date: date,
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			const expiresDate = new Date(result.headers.get("Expires")).getTime();
+			equal(expiresDate, new Date(date).getTime() + 60 * 1000);
 		},
 	);
 
@@ -595,6 +838,57 @@ test("cache", async (t) => {
 			const expiresDate = new Date(result.headers.get("Expires")).getTime();
 			const expected = new Date(date).getTime() + 120 * 1000;
 			equal(expiresDate, expected);
+		},
+	);
+
+	await t.test(
+		"applyExpires: prefers s-maxage over max-age when both are present (regardless of order)",
+		async () => {
+			const date = new Date().toString();
+
+			// max-age listed first.
+			const responseA = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=60, s-maxage=120",
+					Date: date,
+				}),
+			});
+			const resultA = applyExpires(responseA);
+			equal(
+				new Date(resultA.headers.get("Expires")).getTime(),
+				new Date(date).getTime() + 120 * 1000,
+			);
+
+			// s-maxage listed first (regex-alternation order must not matter).
+			const responseB = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "s-maxage=120, max-age=60",
+					Date: date,
+				}),
+			});
+			const resultB = applyExpires(responseB);
+			equal(
+				new Date(resultB.headers.get("Expires")).getTime(),
+				new Date(date).getTime() + 120 * 1000,
+			);
+		},
+	);
+
+	await t.test(
+		"applyExpires: writes Expires as an HTTP-date (GMT)",
+		async () => {
+			const response = new Response("", {
+				headers: new Headers({
+					"Cache-Control": "max-age=60",
+					Date: new Date().toUTCString(),
+				}),
+			});
+
+			const result = applyExpires(response);
+
+			const expires = result.headers.get("Expires");
+			strictEqual(/ GMT$/.test(expires), true);
+			strictEqual(Number.isNaN(new Date(expires).getTime()), false);
 		},
 	);
 });

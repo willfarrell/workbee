@@ -2,14 +2,15 @@
 	"name": "workbee.js.org",
 	"description": "SvelteKit SSR",
 	"private": true,
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"type": "module",
 	"scripts": {
 		"start": "vite dev",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
-		"build": "npm run build:svelte && npm run build:svg && npm run build:styles:extract && npm run build:styles:optimize",
+		"build": "npm run build:svelte && npm run build:workers && npm run build:svg && npm run build:styles:extract && npm run build:styles:optimize",
 		"build:svelte": "vite build",
+		"build:workers": "cp -R .svelte-kit/output/server/_/immutable/workers .svelte-kit/cloudflare/_/immutable/workers",
 		"build:styles:extract": "ds extract --input-dir ./.svelte-kit --theme ./src/styles/theme.css --output-dir src/styles/",
 		"build:styles:optimize": "ds optimize-styles ./.svelte-kit",
 		"build:svg": "npx svgo --multipass --recursive ./.svelte-kit/ -o ./.svelte-kit/",
@@ -18,9 +19,8 @@
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
-		"@plausible-analytics/tracker": "0.4.5",
-		"@willfarrell-ds/svelte": "0.0.0-alpha.6",
-		"@willfarrell-ds/vanilla": "0.0.0-alpha.6",
+		"@willfarrell-ds/svelte": "0.0.0-alpha.8",
+		"@willfarrell-ds/vanilla": "0.0.0-alpha.8",
 		"hast-util-to-string": "3.0.1",
 		"mdast-util-to-string": "4.0.0",
 		"uuid": "14.0.1"
@@ -29,7 +29,7 @@
 		"@sveltejs/adapter-cloudflare": "^7.0.0",
 		"@sveltejs/kit": "^2.64.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
-		"@willfarrell-ds/cli": "0.0.0-alpha.6",
+		"@willfarrell-ds/cli": "0.0.0-alpha.8",
 		"esbuild": "^0.28.1",
 		"mdsvex": "^0.12.0",
 		"svelte": "^5.56.3",
@@ -43,14 +43,16 @@
 	},
 	"overrides": {
 		"@sveltejs/kit": {
-			"cookie": "^0.7.0",
-			"devalue": "5.7.1"
-		},
-		"svelte": {
-			"devalue": "5.7.1"
+			"cookie": "^0.7.0"
 		},
 		"@willfarrell-ds/cli": {
 			"mathjs": "^15.2.0"
+		},
+		"wrangler": {
+			"esbuild": ">=0.28.1",
+			"miniflare": {
+				"ws": ">=8.21.0"
+			}
 		}
 	}
 }

@@ -16,6 +16,7 @@
 		"CNAME",
 		"commitlint.config.cjs",
 		"playwright.config.js",
+		"stryker.config.mjs",
 		"docs/**/*",
 		"LICENSE",
 		".license.template",

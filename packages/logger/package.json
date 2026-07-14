@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/logger",
-	"version": "0.2.0",
+	"version": "0.3.0",
 	"description": "logger workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -15,17 +15,18 @@
 			"default": "./index.js"
 		}
 	},
-	"types": "index.d.ts",
+	"types": "./index.d.ts",
 	"sideEffects": false,
 	"files": [
 		"index.js",
 		"index.d.ts"
 	],
 	"scripts": {
-		"test": "node --test"
+		"test": "node --test",
+		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
 	"dependencies": {
-		"@work-bee/core": "0.2.0"
+		"@work-bee/core": "0.3.0"
 	},
 	"repository": {
 		"type": "git",

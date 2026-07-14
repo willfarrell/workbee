@@ -9,37 +9,23 @@
     <script type="module">
       if ('serviceWorker' in navigator) {
               const sw = navigator.serviceWorker
-              const reg = await sw.register('/sw.js', {
+              await sw.register('/sw.js', {
                 type: 'module',
                 scope: '/'
               })
 
-              sw.addEventListener('message', async (event) => {
-                if (event.origin !== location.origin) return
-                if (reg.active) return
-                await swEvents[event]()
-              })
-
+              // Handlers for messages the ServiceWorker posts back to the page.
               const swEvents = {
-                update: () => {
-                  // TODO
-                }
+                'offline-enqueue': (data) =>
+                  console.log('queued while offline', data),
+                'offline-dequeue': (data) =>
+                  console.log('replayed queued request', data),
+                inactive: () => console.log('session inactive')
               }
-
-              const _ononline = () => {
-                sw.controller.postMessage({
-                  type: 'online'
-                })
-              }
-              const _onoffline = () => {}
-
-              //while(!reg.active) {}
-              /* try {
-              const response = await fetch('/sample.csv')
-              console.log(await response.text()) // TypeError: Failed to fetch
-            } catch (e) {
-              console.error(e)
-            }*/
+              sw.addEventListener('message', (event) => {
+                if (event.origin !== location.origin) return
+                swEvents[event.data?.type]?.(event.data)
+              })
             }
 
             document.addEventListener('visibilitychange', () => {

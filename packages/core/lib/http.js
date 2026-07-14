@@ -23,7 +23,9 @@ export const isRequest = (value) => value instanceof Request;
 export const newRequest = (url, options) => new Request(url, options);
 
 export const addHeaderToRequest = (request, key, value) => {
-	const headers = new Headers(headersGetAll(request.headers));
+	// `Headers` accepts another Headers instance directly; skip the plain-object
+	// round-trip through headersGetAll on this per-request path.
+	const headers = new Headers(request.headers);
 	headers.set(key, value);
 	return new Request(request, { headers });
 };
@@ -32,7 +34,8 @@ export const isResponse = (response) => response instanceof Response;
 export const newResponse = ({ status, statusText, body }, headersObj) => {
 	const headers = headersGetAll(headersObj);
 	if (headers.Date === undefined && headers.date === undefined) {
-		headers.Date = new Date().toString();
+		// HTTP-date format (RFC 9110 §5.6.7); `.toString()` is not a valid date.
+		headers.Date = new Date().toUTCString();
 	}
 	return new Response(body, { status, statusText, headers });
 };
@@ -47,13 +50,13 @@ const rebuildResponse = (response, headers) => {
 };
 
 export const addHeaderToResponse = (response, key, value) => {
-	const headers = new Headers(headersGetAll(response.headers));
+	const headers = new Headers(response.headers);
 	headers.set(key, value);
 	return rebuildResponse(response, headers);
 };
 
 export const deleteHeaderFromResponse = (response, key) => {
-	const headers = new Headers(headersGetAll(response.headers));
+	const headers = new Headers(response.headers);
 	headers.delete(key);
 	return rebuildResponse(response, headers);
 };

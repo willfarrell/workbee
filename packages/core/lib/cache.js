@@ -5,14 +5,20 @@
 import { consoleError } from "./console.js";
 import { addHeaderToResponse } from "./http.js";
 
-export const cacheControlMaxAgeRegExp = /(max-age|s-maxage)=([0-9]+)/;
+// Literal per-directive matchers — boundary-anchored so "max-age" can't match
+// inside another token, and literal (not `new RegExp(...)`) to avoid a dynamic-
+// RegExp/ReDoS SAST finding. Only two directives exist, so no constructor needed.
+const sMaxAgeRegExp = /(?:^|[,\s])s-maxage=([0-9]+)/;
+const maxAgeRegExp = /(?:^|[,\s])max-age=([0-9]+)/;
 
 export const applyExpires = (response) => {
 	if (response.headers.get("Expires")) return response;
-	const match = response.headers
-		.get("Cache-Control")
-		?.match(cacheControlMaxAgeRegExp);
-	const maxAge = match ? Number.parseInt(match[2], 10) : 0;
+	const cacheControl = response.headers.get("Cache-Control");
+	// Precedence: s-maxage is the shared-cache override (RFC 9111 §5.2.2.10), so
+	// when both are present it wins regardless of order; max-age is the fallback.
+	const match =
+		cacheControl?.match(sMaxAgeRegExp) ?? cacheControl?.match(maxAgeRegExp);
+	const maxAge = match ? Number.parseInt(match[1], 10) : 0;
 	if (!maxAge) return response;
 	const dateHeader = response.headers.get("Date");
 	const parsedDate = dateHeader ? new Date(dateHeader).getTime() : NaN;
@@ -20,7 +26,8 @@ export const applyExpires = (response) => {
 	return addHeaderToResponse(
 		response,
 		"Expires",
-		new Date(responseTime + maxAge * 1000).toString(),
+		// HTTP-date format (RFC 9110 §5.6.7); `.toString()` is not a valid date.
+		new Date(responseTime + maxAge * 1000).toUTCString(),
 	);
 };
 
@@ -35,17 +42,39 @@ const getCache = async (cacheKey) => {
 		return openCaches[cacheKey];
 	}
 	delete openCaches[cacheKey];
-	inFlightOpens[cacheKey] ??= caches.open(cacheKey).then((cache) => {
-		openCaches[cacheKey] = cache;
-		delete inFlightOpens[cacheKey];
-		return cache;
-	});
+	inFlightOpens[cacheKey] ??= caches
+		.open(cacheKey)
+		.then((cache) => {
+			openCaches[cacheKey] = cache;
+			delete inFlightOpens[cacheKey];
+			return cache;
+		})
+		// Clear the in-flight slot on rejection too; otherwise a transient
+		// caches.open() failure leaves a rejected promise cached here forever,
+		// wedging every future read/write for this cacheKey.
+		.catch((e) => {
+			delete inFlightOpens[cacheKey];
+			throw e;
+		});
 	return inFlightOpens[cacheKey];
 };
 
 export const cacheMatch = async (cacheKey, request) => {
-	const cache = await getCache(cacheKey);
-	return cache.match(request);
+	const cache = openCaches[cacheKey];
+	if (cache) {
+		// Reads sit on the response critical path, so validate the open handle
+		// in parallel with the speculative read instead of paying a serial
+		// `caches.has()` round-trip on every hit. The read result is only
+		// returned when the cache still exists; otherwise fall through to
+		// getCache(), which drops the stale handle and reopens.
+		const [exists, response] = await Promise.all([
+			caches.has(cacheKey),
+			cache.match(request),
+		]);
+		if (exists) return response;
+	}
+	const freshCache = await getCache(cacheKey);
+	return freshCache.match(request);
 };
 
 export const cachePut = async (cacheKey, request, response, retry = 0) => {
@@ -87,12 +116,21 @@ export const cacheExpired = (response) => {
 
 export const cacheDeleteExpired = async (cacheKey) => {
 	const cache = await caches.open(cacheKey);
-	const responses = await cache.matchAll();
-	for (const response of responses ?? []) {
-		if (cacheExpired(response)) {
-			await cache.delete(response.url);
-		}
-	}
+	// Enumerate request keys rather than response URLs: entries are written
+	// with `cache.put(request.url, ...)`, and synthetic/redirected responses
+	// have a `response.url` of "" or one that differs from the request key, so
+	// `cache.delete(response.url)` would never purge them.
+	const requests = await cache.keys();
+	// Check (and purge) every entry concurrently; a serial match/delete pair
+	// per entry makes quota recovery O(entries) round-trips.
+	await Promise.all(
+		(requests ?? []).map(async (request) => {
+			const response = await cache.match(request);
+			if (cacheExpired(response)) {
+				await cache.delete(request);
+			}
+		}),
+	);
 };
 
 export const cachesDeleteExpired = async () => {

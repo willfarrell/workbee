@@ -25,6 +25,31 @@
 npm install @work-bee/logger
 ```
 
+## Usage
+
+```js
+import loggerMiddleware from "@work-bee/logger";
+
+// Default: logs every lifecycle phase to console with sensitive headers redacted.
+loggerMiddleware();
+
+// Quieter: only log the final response phase.
+loggerMiddleware({ runOnBefore: false, runOnBeforeNetwork: false, runOnAfterNetwork: false });
+```
+
+## Options
+
+`loggerMiddleware(options?)` returns `{ before, beforeNetwork, afterNetwork, after }`. A phase is `false` when its `runOn*` flag is disabled; workbee skips falsy hooks automatically. The default `logger` redacts sensitive header values and never logs raw request/response bodies.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `logger` | `(when, request, response, event, config, redactHeaders) => void` | built-in console formatter | Called for each enabled phase. |
+| `redactHeaders` | `string[]` | `["authorization", "cookie", "set-cookie", "proxy-authorization"]` | Header names (compared case-insensitively) whose values the default logger replaces with `[REDACTED]`. |
+| `runOnBefore` | `boolean` | `true` | Log the `before` phase. |
+| `runOnBeforeNetwork` | `boolean` | `true` | Log the `beforeNetwork` phase. |
+| `runOnAfterNetwork` | `boolean` | `true` | Log the `afterNetwork` phase. |
+| `runOnAfter` | `boolean` | `true` | Log the `after` phase. |
+
 ## License
 
 Licensed under [MIT License](LICENSE). Copyright (c) 2026 [will Farrell](https://github.com/willfarrell) and the [Workbee contributors](https://github.com/willfarrell/workbee/graphs/contributors).

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
 
-import type { AfterMiddleware } from "@work-bee/core";
+import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 import type { SerializedRequest } from "@work-bee/offline";
 import offline, {
 	idbDeserializeRequest,
@@ -12,6 +12,7 @@ describe("offline", () => {
 	test("returns OfflineMiddlewareResult", () => {
 		const result = offline();
 		expect(result).type.toBe<{
+			beforeNetwork: BeforeMiddleware;
 			afterNetwork: AfterMiddleware;
 			postMessageEvent: () => Promise<void>;
 			destroy: () => void;

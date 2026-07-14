@@ -1,6 +1,6 @@
 /* global Request */
 
-import { deepEqual } from "node:assert";
+import { deepEqual, strictEqual } from "node:assert";
 import test from "node:test";
 import {
 	cachesOverride,
@@ -23,6 +23,7 @@ test("cacheControlMiddleware.afterNetwork: Should override the Cache-Control", a
 		cacheControl: "no-cache",
 	});
 	const { event, config } = setupMocks();
+	strictEqual(response.headers.get("Cache-Control"), "max-age=86400");
 	const outputResponse = await cacheControl.afterNetwork(
 		request,
 		response,
@@ -31,6 +32,7 @@ test("cacheControlMiddleware.afterNetwork: Should override the Cache-Control", a
 	);
 
 	deepEqual(outputResponse, cacheControlResponse);
+	strictEqual(outputResponse.headers.get("Cache-Control"), "no-cache");
 });
 
 test("cacheControlMiddleware: Should throw when cacheControl is not a non-empty string", async (_t) => {

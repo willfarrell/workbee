@@ -1,0 +1,32 @@
+{
+	"kit": {
+		"csp": {
+			"mode": "hash",
+			"directives": {
+				"base-uri": ["none"],
+				"connect-src": ["self"],
+				"default-src": ["none"],
+				"form-action": ["self"],
+				"frame-ancestors": ["none"],
+				"img-src": ["self"],
+				"manifest-src": ["self"],
+				"report-to": ["default"],
+				"script-src": ["self"],
+				"script-src-attr": ["report-sample"],
+				"style-src": ["self"],
+				"style-src-attr": ["report-sample"],
+				"upgrade-insecure-requests": true,
+				"worker-src": ["self"]
+			},
+			"reportOnly": {
+				"base-uri": ["none"],
+				"default-src": ["report-sample", "'report-sha256'"],
+				"form-action": ["none"],
+				"frame-ancestors": ["none"],
+				"report-to": ["default"],
+				"report-uri": ["https://workbee.js.org.report-to.org"],
+				"require-trusted-types-for": ["script"]
+			}
+		}
+	}
+}

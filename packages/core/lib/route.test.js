@@ -35,6 +35,10 @@ test("route", async (t) => {
 		deepEqual(pick(undefined, ["a"]), {});
 	});
 
+	await t.test("pick: defaults to picking no keys when none requested", () => {
+		deepEqual(pick({ a: 1, "Stryker was here": 2 }), {});
+	});
+
 	// *** routeInheritKeys *** //
 	await t.test(
 		"routeInheritKeys: lists the properties inherited from a parent",

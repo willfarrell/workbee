@@ -12,6 +12,7 @@ interface SessionOptions {
 	) => number | Promise<number>;
 	authzPathPattern?: RegExp;
 	authzSetToken?: (request: Request, token: string) => Request;
+	authzAllowedOrigins?: string[];
 	inactivityPromptEventType?: string;
 	postMessage?: (message: any) => Promise<void>;
 	unauthnPathPattern?: RegExp;

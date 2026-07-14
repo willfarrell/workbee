@@ -13,6 +13,7 @@ export const defaultConfig = Object.freeze({
 	// global
 	cachePrefix: "sw-",
 	skipWaiting: true,
+	passthrough: true,
 
 	// installEvent
 	// { ...Route, routes:Route[] }
@@ -37,7 +38,6 @@ export const defaultConfig = Object.freeze({
 	// requestMiddlware: [],
 	// responseMiddleware: [],
 	cacheName: "default",
-	cacheControlMaxAge: -1, // -1 = disable
 
 	// Route[]
 	routes: Object.freeze([]),
@@ -64,6 +64,14 @@ export const compileConfig = (config = {}) => {
 	}
 	const baseConfig = resolveMiddlewares({ ...defaultConfig, ...config });
 	baseConfig.routes = baseConfig.routes.map((r) => compileRoute(baseConfig, r));
+	// Resolved once at compile time: an unmatched request may bypass
+	// `respondWith` (see eventFetch) only when the top-level config would do
+	// nothing beyond proxying — the default network-only strategy with no
+	// middlewares. Any custom strategy or middleware keeps full handling.
+	baseConfig.passthrough =
+		baseConfig.passthrough === true &&
+		baseConfig.strategy === strategyNetworkOnly &&
+		!baseConfig.middlewares?.length;
 
 	const precacheConfig = resolveMiddlewares({
 		...defaultConfig.precache,

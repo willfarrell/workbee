@@ -100,6 +100,12 @@ Handles the `activate` event. Cleans up old caches.
 
 Handles the `fetch` event. Routes requests to the appropriate strategy.
 
+When a request matches no route and the top-level config is the bare default
+proxy (`strategyNetworkOnly` with no `middlewares`), `eventFetch` skips
+`respondWith` so the browser handles the request natively — unmatched traffic
+is never piped through the worker. Set `passthrough: false` on the top-level
+config to force every request through the worker instead.
+
 ## RouteConfig
 
 Each route in the `routes` array can have these properties:
@@ -110,7 +116,6 @@ Each route in the `routes` array can have these properties:
 | `methods` | `string[]` | `["GET"]` | HTTP methods this route handles |
 | `cacheName` | `string` | — | Name for the cache storage |
 | `cachePrefix` | `string` | `""` | Prefix prepended to cache names |
-| `cacheControlMaxAge` | `number` | — | Max age in seconds for cache entries |
 | `strategy` | `Strategy` | — | Caching strategy for this route |
 | `middlewares` | `Middleware[]` | `[]` | Middleware to apply to this route |
 

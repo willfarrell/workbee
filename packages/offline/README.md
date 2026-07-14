@@ -25,19 +25,68 @@
 npm install @work-bee/offline
 ```
 
+## Usage
+
+```js
+// service worker
+import offlineMiddleware from "@work-bee/offline";
+
+const offline = offlineMiddleware({
+  pollDelay: 0, // disable the internal timer; drain via the `online` message instead
+  enqueueEventType: "offline-enqueue",
+  dequeueEventType: "offline-dequeue",
+});
+
+// Drain the queue when the page reports the network is back.
+addEventListener("message", (event) => {
+  if (event.data?.type === "online") event.waitUntil(offline.postMessageEvent());
+});
+```
+
+```js
+// page — companion client posts `{ type: "online" }` on the window `online` event
+import registerOnline from "@work-bee/offline/client";
+const unregister = registerOnline();
+```
+
+## Options
+
+`offlineMiddleware(options?)` returns `{ beforeNetwork, afterNetwork, postMessageEvent, destroy }`. Wire it as a route middleware (the `beforeNetwork` hook captures the request body before the network consumes it, so queued `POST`/`PUT` bodies survive) and call `postMessageEvent()` to drain/replay the queue.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `methods` | `string[]` | `["POST", "PUT", "PATCH", "DELETE"]` | HTTP methods whose failed requests are queued. |
+| `statusCodes` | `number[]` | `[503, 504]` | Statuses treated as retryable (request stays queued); any other non-`2xx` is evicted as a permanent failure. |
+| `pollDelay` | `number` (ms) | `60000` | Delay before the internal timer re-attempts a drain. Set `0` to disable the timer and drive replay via the `online` message and/or Background Sync. |
+| `enqueueEventType` | `string` | — | `postMessage` type sent when a request is queued. |
+| `dequeueEventType` | `string` | — | `postMessage` type sent when a queued request replays successfully (`2xx`). |
+| `failedEventType` | `string` | — | `postMessage` type sent when a request is permanently evicted (see Data & Privacy). |
+| `quotaExceededEventType` | `string` | — | `postMessage` type sent when an IndexedDB write hits the storage quota. |
+| `redactHeaders` | `string[]` | `["authorization", "cookie", "set-cookie", "proxy-authorization"]` | Header names stripped before a request is persisted. |
+| `databaseName` | `string` | `"sw"` | IndexedDB database name. |
+| `objectStoreName` | `string` | `"offline"` | IndexedDB object store name. |
+| `postMessage` | `(message) => Promise<void>` | `postMessageToFocused` | How worker→page events are delivered. |
+
+The enqueue/dequeue/failed events carry the entry metadata (method, URL, redacted headers); the request body is never included.
+
 ## Data & Privacy
 
 The offline middleware queues failed requests in IndexedDB for replay when connectivity returns. Understanding what is stored is important for privacy compliance.
 
-**What is stored:** The full request (method, URL, headers, body) is serialized to IndexedDB. Headers listed in `redactHeaders` (defaults to `["authorization"]`) are stripped before storage — session middleware re-adds credentials on retry.
+**What is stored:** The full request (method, URL, headers, body) is serialized to IndexedDB. Headers listed in `redactHeaders` (defaults to `["authorization", "cookie", "set-cookie", "proxy-authorization"]`) are stripped before storage.
+
+**Replays are unauthenticated:** Because the credential headers above are stripped before the request is persisted, queued requests are replayed **without** their original authentication — the queue does not re-inject session credentials on retry. Routes that require authentication should not rely on the offline queue; a replayed request will reach the server stripped of its auth headers (and is likely to be rejected). Use the queue only for endpoints that accept the replayed request on its own (e.g. cookie-bound same-origin requests where the browser re-attaches the cookie, or routes that do not require per-request credentials).
 
 **Why:** Requests must be stored faithfully so they can be replayed without data loss when the network is available again.
 
-**Retention:** Queued requests persist in IndexedDB until they are successfully replayed or the user clears browser data.
+**Retention:** Queued requests persist in IndexedDB until they are successfully replayed, evicted as a permanent failure (see below), or the user clears browser data.
+
+**Permanent failures are evicted, not retried forever:** When a queued request is replayed, the response decides its fate. A `2xx` is dequeued. A retryable status (any code in `statusCodes`, default `503`/`504`) is left queued and retried on the next poll. Any other non-`2xx` (e.g. a `4xx` or `410`) is treated as a permanent failure and **evicted** from the queue — otherwise a request the server will never accept would wedge the head of the queue and block every entry behind it forever. So that the eviction does not silently lose data, set the `failedEventType` option to a string: the middleware then `postMessage`s an event of that type carrying the entry metadata (method, URL, redacted headers — the body is stripped, exactly like the enqueue/dequeue events) whenever a request is evicted. A fetch that throws (a transient network error with no response) keeps the entry queued for a later retry.
 
 **Developer responsibility:**
-- Use the `redactHeaders` option to control which headers are stripped before storage (defaults to `["authorization"]`)
+- Use the `redactHeaders` option to control which headers are stripped before storage (defaults to `["authorization", "cookie", "set-cookie", "proxy-authorization"]`)
 - Use the `methods` option to limit which HTTP methods are queued (defaults to POST, PUT, PATCH, DELETE)
+- Set the `failedEventType` option and listen for it on the client so permanently-failing (evicted) requests can be reported to the user instead of being dropped unnoticed
 - Avoid queuing routes that carry highly sensitive data in the request body if persistence is not acceptable
 - Consider calling `indexedDB.deleteDatabase('sw')` on user logout to clear any queued requests
 
