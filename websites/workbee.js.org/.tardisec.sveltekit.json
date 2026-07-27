@@ -5,16 +5,19 @@
 			"directives": {
 				"base-uri": ["none"],
 				"connect-src": ["self"],
-				"default-src": ["none"],
+				"default-src": ["report-sample", "'report-sha256'"],
 				"form-action": ["self"],
 				"frame-ancestors": ["none"],
 				"img-src": ["self"],
 				"manifest-src": ["self"],
 				"report-to": ["default"],
-				"script-src": ["self"],
-				"script-src-attr": ["report-sample"],
-				"style-src": ["self"],
-				"style-src-attr": ["report-sample"],
+				"report-uri": [
+					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
+				],
+				"script-src": ["self", "report-sample", "'report-sha256'"],
+				"script-src-attr": ["report-sample", "'report-sha256'"],
+				"style-src": ["self", "report-sample", "'report-sha256'"],
+				"style-src-attr": ["report-sample", "'report-sha256'"],
 				"upgrade-insecure-requests": true,
 				"worker-src": ["self"]
 			},
@@ -24,7 +27,9 @@
 				"form-action": ["none"],
 				"frame-ancestors": ["none"],
 				"report-to": ["default"],
-				"report-uri": ["https://workbee.js.org.report-to.org"],
+				"report-uri": [
+					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
+				],
 				"require-trusted-types-for": ["script"]
 			}
 		}
