@@ -140,6 +140,24 @@ test("inactivityMiddleware: after() for an event whose before() was skipped does
 	strictEqual(inactivityEvent.mock.callCount(), 1);
 });
 
+test("inactivityMiddleware: destroy() clears the pending timer", async (t) => {
+	// The constructor arms a timer immediately, so a middleware instance keeps
+	// the event loop alive for the whole inactivity window. `offline` and
+	// `session` both expose destroy(); without it here a caller (or a test
+	// process) has no way to release the timer.
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const inactivityEvent = mock.fn(() => {});
+	const inactivity = inactivityMiddleware({
+		inactivityAllowedInMin: 15,
+		inactivityEvent,
+	});
+
+	inactivity.destroy();
+
+	t.mock.timers.tick(15 * 60 * 1000 + 1);
+	strictEqual(inactivityEvent.mock.callCount(), 0);
+});
+
 test("inactivityMiddleware: Should trigger inactivityEvent after postMessageEvent happens", async (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout"] });
 	const inactivityEvent = mock.fn(() => {});

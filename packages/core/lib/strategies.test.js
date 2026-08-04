@@ -1129,6 +1129,69 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
+		"strategyPartition: composite response drops the first sub-response's entity headers",
+		async (_t) => {
+			// Content-Length, ETag & friends describe the *fragment* they came
+			// with, not the concatenation. Carrying them over advertises the
+			// first fragment's length/validator for the whole composite, which
+			// truncates or mis-caches the response.
+			const { strategyPartition } = await import("../index.js");
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = async () =>
+				new Response("fragment", {
+					status: 200,
+					headers: new Headers({
+						"Content-Type": "text/html; charset=utf-8",
+						"Content-Length": "8",
+						"Content-Encoding": "gzip",
+						"Content-Range": "bytes 0-7/8",
+						ETag: 'W/"fragment-1"',
+						"Last-Modified": "Wed, 21 Oct 2015 07:28:00 GMT",
+						"X-Composite-Marker": "first",
+					}),
+				});
+
+			try {
+				const waitUntils = [];
+				const event = {
+					__request: new Request(`${domain}/200`, { method: "GET" }),
+					waitUntil: (fct) => waitUntils.push(fct),
+				};
+				const { config } = setupMocks(
+					strategyPartition(
+						compileConfig({
+							routes: [{ path: "/a" }, { path: "/b" }, { path: "/c" }],
+							strategy: strategyNetworkOnly,
+							middlewares: [],
+						}),
+					),
+				);
+
+				const response = await fetchStrategy(event.__request, event, config);
+				const body = await response.text();
+				await Promise.all(waitUntils);
+
+				// Three fragments concatenated — the first fragment's length,
+				// validator and encoding all describe 1/3 of what was sent.
+				strictEqual(body, "fragmentfragmentfragment");
+				strictEqual(response.headers.get("Content-Length"), null);
+				strictEqual(response.headers.get("Content-Encoding"), null);
+				strictEqual(response.headers.get("Content-Range"), null);
+				strictEqual(response.headers.get("ETag"), null);
+				strictEqual(response.headers.get("Last-Modified"), null);
+				// Representation headers that do describe the composite still carry.
+				strictEqual(
+					response.headers.get("Content-Type"),
+					"text/html; charset=utf-8",
+				);
+				strictEqual(response.headers.get("X-Composite-Marker"), "first");
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		},
+	);
+
+	await t.test(
 		"strategyPartition: body.cancel() aborts in-flight sub-request signals",
 		async (_t) => {
 			const { strategyPartition } = await import("../index.js");

@@ -143,6 +143,21 @@ const config = compileConfig({
 });
 ```
 
+`routes` may also be a URL pointing at a remote route manifest. Core ships no
+default parser for that, so an `extract` function is required — see
+[@work-bee/precache-json](/docs/packages/precache-json) for the JSON one.
+
+```js
+import { precacheExtractJSON } from "@work-bee/precache-json";
+
+const config = compileConfig({
+  precache: {
+    routes: "/precache.json",
+    extract: precacheExtractJSON,
+  },
+});
+```
+
 ## postMessage Utilities
 
 ```js

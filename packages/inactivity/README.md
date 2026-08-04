@@ -19,43 +19,17 @@
 <p>You can read the documentation at: <a href="https://workbee.js.org">https://workbee.js.org</a></p>
 </div>
 
+Middleware that detects user inactivity and can trigger actions like cache cleanup.
+
 ## Install
 
 ```bash
 npm install @work-bee/inactivity
 ```
 
-## Usage
+## Documentation
 
-```js
-// service worker
-import inactivityMiddleware from "@work-bee/inactivity";
-
-const inactivity = inactivityMiddleware({
-  inactivityAllowedInMin: 15,
-  inactivityEvent: () => postMessageToFocused({ type: "inactive" }),
-});
-
-// Reset the timer when the page reports activity.
-addEventListener("message", (event) => {
-  if (event.data?.type === "inactivity") inactivity.postMessageEvent();
-});
-```
-
-```js
-// page — companion client posts `{ type: "inactivity" }` on DOM activity
-import registerInactivity from "@work-bee/inactivity/client";
-const unregister = registerInactivity();
-```
-
-## Options
-
-`inactivityMiddleware(options?)` returns `{ before, after, postMessageEvent }`. The timer only fires while no requests are in flight; `postMessageEvent()` resets it (wire it to an activity message from the page).
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `inactivityAllowedInMin` | `number` | `15` | Minutes without activity (no in-flight requests / activity messages) before `inactivityEvent` fires. |
-| `inactivityEvent` | `() => void` | warns to console | Called once the inactivity window elapses. Typically posts a message to the page. |
+Full documentation, options and examples: <https://workbee.js.org/docs/packages/inactivity>
 
 ## License
 

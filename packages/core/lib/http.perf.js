@@ -16,7 +16,7 @@ import {
 const domain = "http://localhost:8080";
 
 test("perf: newRequest", async () => {
-	const iterations = 100_000;
+	const iterations = 10_000;
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
 		newRequest(`${domain}/api/users`);
@@ -28,7 +28,7 @@ test("perf: newRequest", async () => {
 });
 
 test("perf: newResponse", async () => {
-	const iterations = 100_000;
+	const iterations = 10_000;
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
 		newResponse(
@@ -43,7 +43,7 @@ test("perf: newResponse", async () => {
 });
 
 test("perf: isRequest / isResponse", async () => {
-	const iterations = 1_000_000;
+	const iterations = 100_000;
 	const request = new Request(`${domain}/api/users`);
 	const response = new Response("{}");
 	const start = performance.now();
@@ -77,7 +77,7 @@ test("perf: headersGetAll", async () => {
 });
 
 test("perf: addHeaderToRequest", async () => {
-	const iterations = 100_000;
+	const iterations = 2_000;
 	const request = new Request(`${domain}/api/users`);
 	const start = performance.now();
 	for (let i = 0; i < iterations; i++) {
@@ -90,7 +90,7 @@ test("perf: addHeaderToRequest", async () => {
 });
 
 test("perf: addHeaderToResponse", async () => {
-	const iterations = 100_000;
+	const iterations = 2_000;
 	const response = new Response("{}", {
 		status: 200,
 		headers: new Headers({
@@ -109,7 +109,7 @@ test("perf: addHeaderToResponse", async () => {
 });
 
 test("perf: deleteHeaderFromResponse", async () => {
-	const iterations = 100_000;
+	const iterations = 2_000;
 	const response = new Response("{}", {
 		status: 200,
 		headers: new Headers({

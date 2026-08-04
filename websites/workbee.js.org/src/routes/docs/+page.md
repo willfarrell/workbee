@@ -38,3 +38,7 @@ Middleware packages hook into the request/response lifecycle with `before`, `bef
 - `@work-bee/offline` - Queues requests when offline
 - `@work-bee/save-data` - Respects the Save-Data header
 - `@work-bee/session` - Session management
+
+### Plugins
+
+- `@work-bee/precache-json` - Extracts a precache route manifest from a JSON response

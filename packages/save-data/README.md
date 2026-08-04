@@ -19,30 +19,17 @@
 <p>You can read the documentation at: <a href="https://workbee.js.org">https://workbee.js.org</a></p>
 </div>
 
+Middleware that adjusts caching strategy based on the `Save-Data` request header.
+
 ## Install
 
 ```bash
 npm install @work-bee/save-data
 ```
 
-## Usage
+## Documentation
 
-```js
-import saveDataMiddleware from "@work-bee/save-data";
-import { strategyCacheOnly } from "@work-bee/core";
-
-// When the request carries `Save-Data: on`, swap to a lighter strategy for
-// this request only; the original strategy is restored afterwards.
-saveDataMiddleware({ saveDataStrategy: strategyCacheOnly });
-```
-
-## Options
-
-`saveDataMiddleware(options?)` returns `{ before, after }`. It reads the [`Save-Data`](https://developer.mozilla.org/docs/Web/HTTP/Headers/Save-Data) request header and only swaps the strategy when it is `on`.
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `saveDataStrategy` | `Strategy` | `strategyCacheOnly` | Strategy used for the current request when `Save-Data: on` is present. |
+Full documentation, options and examples: <https://workbee.js.org/docs/packages/save-data>
 
 ## License
 

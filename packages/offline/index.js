@@ -126,13 +126,15 @@ const offlineMiddleware = ({
 		return result;
 	};
 
-	// Reads the oldest queued entry (key + value) in its own transaction.
-	const peekHead = () =>
+	// Reads one end of the queue (key + value) in its own transaction.
+	// "next" = oldest, the replay order; "prev" = newest, what enqueue dedupes
+	// against. Keys are autoIncrement, so cursor order is insertion order.
+	const peek = (direction) =>
 		withStore(
 			"readonly",
 			(store) =>
 				new Promise((resolve, reject) => {
-					const req = store.openCursor();
+					const req = store.openCursor(null, direction);
 					req.onsuccess = (e) => {
 						const cursor = e?.target?.result;
 						resolve(cursor ? { key: cursor.key, value: cursor.value } : null);
@@ -161,8 +163,11 @@ const offlineMiddleware = ({
 		for (const header of redactHeaders) {
 			delete serialized.headers[header.toLowerCase()];
 		}
-		const head = await peekHead();
-		if (JSON.stringify(head?.value) === JSON.stringify(serialized)) {
+		// Compare against the newest entry: this suppresses an accidental double
+		// submit of the same request, while still queueing a genuine re-submit
+		// that happened after some other request.
+		const tail = await peek("prev");
+		if (JSON.stringify(tail?.value) === JSON.stringify(serialized)) {
 			return;
 		}
 		try {
@@ -178,7 +183,7 @@ const offlineMiddleware = ({
 		if (enqueueEventType) {
 			postMessage(eventPayload(enqueueEventType, serialized));
 		}
-		if (!head) {
+		if (!tail) {
 			timeout();
 		}
 	};
@@ -196,7 +201,7 @@ const offlineMiddleware = ({
 		draining = true;
 		try {
 			while (navigator.onLine) {
-				const head = await peekHead();
+				const head = await peek("next");
 				if (!head) break;
 				const response = await fetch(idbDeserializeRequest(head.value));
 				if (response.ok) {

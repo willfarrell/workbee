@@ -19,70 +19,17 @@
 <p>You can read the documentation at: <a href="https://workbee.js.org">https://workbee.js.org</a></p>
 </div>
 
+Middleware for managing user sessions within the ServiceWorker.
+
 ## Install
 
 ```bash
 npm install @work-bee/session
 ```
 
-## Usage
+## Documentation
 
-```js
-import sessionMiddleware, { getExpiryJWT } from "@work-bee/session";
-
-const session = sessionMiddleware({
-  // Extract a Bearer token from the login response and strip it before it
-  // reaches the page.
-  authnPathPattern: /\/login$/,
-  authnGetExpiry: getExpiryJWT, // optional: derive expiry from the JWT
-  // Attach the stored token to same-origin API requests.
-  authzPathPattern: /\/api\//,
-  // Clear the session on logout.
-  unauthnPathPattern: /\/logout$/,
-  expiryEventType: "session-expired",
-});
-```
-
-## Options
-
-`sessionMiddleware(options)` returns `{ before?, afterNetwork?, after?, activityEvent, destroy }`. `before`/`after` are only present when `authzPathPattern` is set; `afterNetwork` only when `authnPathPattern` or `unauthnPathPattern` is set.
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `authnPathPattern` | `RegExp` | — | Response URLs to extract a session token from (login). |
-| `authnMethods` | `string[]` | `["POST"]` | Methods on `authnPathPattern` that trigger extraction. |
-| `authnGetToken` | `(response) => string \| Promise<string>` | `getTokenAuthorization` | Reads the token from the auth response (default reads `Authorization: Bearer <token>`). |
-| `authnGetExpiry` | `(response, token) => number \| Promise<number>` | `() => 12h` (ms) | Session lifetime in ms. Helpers `getExpiryJWT` / `getExpiryPaseto` are exported. |
-| `authzPathPattern` | `RegExp` | — | Requests whose URL matches receive the stored token (subject to the origin allow-list). |
-| `authzSetToken` | `(request, token) => Request` | `setTokenAuthorization` | Attaches the token to the outgoing request (default sets `Authorization: Bearer <token>`). |
-| `authzAllowedOrigins` | `string[]` | the SW's own origin | Origins allowed to receive the token. **Fail-closed:** if neither this nor the SW origin resolves, no token is attached. An empty array falls back to same-origin only. |
-| `unauthnPathPattern` | `RegExp` | — | Response URLs that clear the session and its tracked caches (logout). |
-| `expiryEventType` | `string` | — | `postMessage` type sent when the session hard-expires. |
-| `inactivityPromptEventType` | `string` | — | `postMessage` type sent when the inactivity-prompt window is reached. |
-| `postMessage` | `(message) => Promise<void>` | `postMessageToFocused` | How worker→page messages are delivered. |
-
-**Exports:** `getTokenAuthorization`, `setTokenAuthorization`, `getExpiryJWT`, `getExpiryPaseto`. The JWT/PASETO helpers only *parse* expiry from an unverified token — they do **not** validate the signature; validate server-side.
-
-## Session lifecycle & SW termination
-
-The session token is held in the service worker's in-memory state only. Browsers
-terminate idle service workers aggressively (typically after ~30 seconds of
-inactivity, or across SW updates), and on restart the middleware starts with no
-token. This affects applications that rely on the SW to inject `Authorization`
-on every request:
-
-- After SW termination, subsequent requests go out unauthenticated until the
-  user re-authenticates or the client replays an auth call that matches
-  `authnPathPattern`.
-- Timers for inactivity / session expiry are also reset on restart; the hard
-  session timeout effectively resumes from the next successful auth response.
-- If you need session continuity across SW restarts, persist the token yourself
-  on `afterNetwork` (e.g. into a dedicated Cache Storage entry) and restore it
-  before the first `before` call runs.
-
-The middleware deliberately never writes tokens to IndexedDB or Cache Storage
-by default — doing so turns a short-lived credential into one that survives
-device restarts, which changes the risk profile.
+Full documentation, options and examples: <https://workbee.js.org/docs/packages/session>
 
 ## License
 

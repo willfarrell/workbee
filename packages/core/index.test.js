@@ -30,7 +30,6 @@ test("core: exports console utilities", () => {
 // events.js
 test("core: exports event utilities", () => {
 	ok("eventInstall" in core);
-	ok("precacheExtractJSON" in core);
 	ok("eventActivate" in core);
 	ok("eventFetch" in core);
 	ok("findRouteConfig" in core);

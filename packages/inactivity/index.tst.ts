@@ -12,6 +12,7 @@ describe("inactivity", () => {
 			before: BeforeMiddleware;
 			after: AfterMiddleware;
 			postMessageEvent: () => void;
+			destroy: () => void;
 		}>();
 	});
 
@@ -28,6 +29,11 @@ describe("inactivity", () => {
 	test("postMessageEvent returns void", () => {
 		const result = inactivity();
 		expect(result.postMessageEvent()).type.toBe<void>();
+	});
+
+	test("destroy returns void", () => {
+		const result = inactivity();
+		expect(result.destroy()).type.toBe<void>();
 	});
 
 	test("accepts all options", () => {

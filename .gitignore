@@ -54,5 +54,8 @@ dist
 *.iml
 .nova
 
+# Agent tooling (local session state)
+.claude/
+
 # OS
 .DS_Store

@@ -21,6 +21,7 @@ jobs:
   trivy-vuln:
     name: "Trivy: SCA"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -46,6 +47,7 @@ jobs:
   trivy-license:
     name: "Trivy: Licensing"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -62,6 +64,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+          cache: npm
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts
@@ -78,6 +81,7 @@ jobs:
   license:
     name: "License headers"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -105,6 +109,7 @@ jobs:
   lockfile:
     name: "lockfile-lint: SAST package-lock.json"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
 
     steps:
@@ -122,6 +127,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
+          cache: npm
       - name: Install dependencies
         run: |
           npm ci --ignore-scripts --workspace .github
@@ -133,6 +139,7 @@ jobs:
   semgrep:
     name: "semgrep: SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     container:
       # https://hub.docker.com/r/semgrep/semgrep/tags
@@ -152,6 +159,7 @@ jobs:
   codeql:
     name: "CodeQL: SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       actions: read
       contents: read
@@ -191,6 +199,7 @@ jobs:
   actionlint:
     name: "actionlint: GitHub Actions lint"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
@@ -208,6 +217,7 @@ jobs:
   zizmor:
     name: "zizmor: GitHub Actions SAST"
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -229,6 +239,7 @@ jobs:
   trufflehog:
     name: 'TruffleHog: secrets'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
@@ -250,6 +261,7 @@ jobs:
   gitleaks:
     name: 'gitleaks: secrets'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: (github.actor != 'dependabot[bot]')
     steps:
       - name: Harden runner
