@@ -45,7 +45,13 @@ const inactivityMiddleware = (opts) => {
 		resetInactivityTimeout(inactivityAllowedInMs);
 	};
 	resetInactivityTimeout(inactivityAllowedInMs);
-	return { before, after, postMessageEvent };
+	// The constructor arms a timer straight away, so without this a caller has no
+	// way to release it (and a Node process holding an instance stays alive for
+	// the whole window). Mirrors `offline`/`session`.
+	const destroy = () => {
+		clearTimeout(inactivityTimeout);
+	};
+	return { before, after, postMessageEvent, destroy };
 };
 
 export default inactivityMiddleware;

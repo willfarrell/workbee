@@ -13,6 +13,7 @@ const nav = {
 		inactivity: "/docs/packages/inactivity",
 		logger: "/docs/packages/logger",
 		offline: "/docs/packages/offline",
+		"precache-json": "/docs/packages/precache-json",
 		"save-data": "/docs/packages/save-data",
 		session: "/docs/packages/session",
 	},

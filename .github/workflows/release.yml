@@ -22,6 +22,7 @@ jobs:
     name: Build
     if: ${{ github.event.pull_request.merged && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -38,7 +39,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
@@ -103,6 +104,7 @@ jobs:
     needs: build
     if: ${{ needs.build.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: write # softprops/action-gh-release
@@ -113,7 +115,7 @@ jobs:
           egress-policy: audit
           disable-telemetry: true
       - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0 # zizmor: ignore[cache-poisoning] no cache configured (no `cache:` input); reconsider if caching is added
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6.4.0 # zizmor: ignore[cache-poisoning] no cache configured (no `cache:` input); reconsider if caching is added
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
@@ -123,7 +125,7 @@ jobs:
           name: ${{ needs.build.outputs.tag }}
       - name: Release
         # Replaces actions/create-release & actions/upload-release-asset (deprecated)
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1 # zizmor: ignore[superfluous-actions] prefer maintained action over inline `gh release` script
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.1 # zizmor: ignore[superfluous-actions] prefer maintained action over inline `gh release` script
         with:
           draft: true
           prerelease: ${{ needs.build.outputs.prerelease }}
@@ -139,6 +141,7 @@ jobs:
     needs: release
     if: ${{ needs.release.outputs.changed == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     permissions:
       contents: read
@@ -151,7 +154,7 @@ jobs:
           egress-policy: audit
           disable-telemetry: true
       - name: Setup Node.js ${{ env.NODE_VERSION }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org

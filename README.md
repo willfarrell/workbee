@@ -584,10 +584,13 @@ addEventListener('fetch', (event) => {
 ```javascript
 /* eslint-env: serviceworker */
 import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
+import { precacheExtractJSON } from '@work-bee/precache-json'
 
 const config = compileConfig({
   precache: {
     routes: '/path/to/precache.json',
+    // Required when `routes` is a URL — core ships no default parser.
+    extract: precacheExtractJSON
   },
   strategy: strategyCacheFirst
 })

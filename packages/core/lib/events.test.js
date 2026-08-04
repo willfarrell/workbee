@@ -1,6 +1,6 @@
 /* global Request Response Headers */
 
-import { deepEqual, equal, strictEqual } from "node:assert";
+import { deepEqual, equal, rejects, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
 import "../../../fixtures/helper.js";
 import {
@@ -17,7 +17,6 @@ import {
 	findRouteConfig,
 	openCaches,
 	pathPattern,
-	precacheExtractJSON,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 } from "../index.js";
@@ -70,123 +69,6 @@ test("events", async (t) => {
 			});
 			const result = findRouteConfig(config, request);
 			equal(result, config);
-		},
-	);
-
-	// *** precacheExtractJSON *** //
-	await t.test(
-		"precacheExtractJSON: should return parsed JSON for application/json response",
-		async () => {
-			const body = JSON.stringify([{ path: "/index.html" }]);
-			const response = new Response(body, {
-				headers: new Headers({ "Content-Type": "application/json" }),
-			});
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, [{ path: "/index.html" }]);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: accepts application/json with charset parameter",
-		async () => {
-			const body = JSON.stringify([{ path: "/index.html" }]);
-			const response = new Response(body, {
-				headers: new Headers({
-					"Content-Type": "application/json; charset=utf-8",
-				}),
-			});
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, [{ path: "/index.html" }]);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: should return empty array for non-JSON response",
-		async () => {
-			const response = new Response("<html></html>", {
-				headers: new Headers({ "Content-Type": "text/html" }),
-			});
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, []);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: throws when JSON body is not an array",
-		async () => {
-			const response = new Response(JSON.stringify({ routes: ["/a"] }), {
-				headers: new Headers({ "Content-Type": "application/json" }),
-			});
-			let caught;
-			try {
-				await precacheExtractJSON(response);
-			} catch (e) {
-				caught = e;
-			}
-			strictEqual(caught instanceof TypeError, true);
-			strictEqual(/array/.test(caught.message), true);
-			// The received type must be reported via `typeof` ("object" here),
-			// not hard-coded — the ternary's non-null arm.
-			strictEqual(/received object/.test(caught.message), true);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: trims surrounding whitespace before matching the media type",
-		async () => {
-			// A Content-Type with surrounding whitespace (bypassing Headers
-			// normalization via a mock) must still be recognized as JSON: the
-			// `.trim()` in the chain is what makes startsWith('application/json')
-			// hold. Without it the leading spaces would fail the match.
-			const routes = [{ path: "/trimmed" }];
-			const fakeResponse = {
-				headers: { get: () => "  application/json  " },
-				json: async () => routes,
-			};
-			deepEqual(await precacheExtractJSON(fakeResponse), routes);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: matches by prefix, not suffix (startsWith)",
-		async () => {
-			// "application/json5" starts with "application/json" (so it is treated
-			// as JSON) but does NOT end with it — pins startsWith over endsWith.
-			const routes = [{ path: "/json5" }];
-			const response = new Response(JSON.stringify(routes), {
-				headers: new Headers({ "Content-Type": "application/json5" }),
-			});
-			deepEqual(await precacheExtractJSON(response), routes);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: returns empty array when Content-Type header is absent",
-		async () => {
-			// Covers the `?? ""` fallback when the response has no Content-Type.
-			const response = new Response("not json");
-			response.headers.delete("Content-Type");
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, []);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: reports `null` when JSON body parses to null",
-		async () => {
-			// Covers the `parsed === null ? "null" : typeof parsed` ternary's
-			// null arm.
-			const response = new Response("null", {
-				headers: new Headers({ "Content-Type": "application/json" }),
-			});
-			let caught;
-			try {
-				await precacheExtractJSON(response);
-			} catch (e) {
-				caught = e;
-			}
-			strictEqual(caught instanceof TypeError, true);
-			strictEqual(/null/.test(caught.message), true);
 		},
 	);
 
@@ -509,27 +391,16 @@ test("events", async (t) => {
 	});
 
 	await t.test(
-		"eventInstall: string routes should default to precacheExtractJSON when extract is not provided",
+		"eventInstall: string routes without `extract` fails with an actionable error",
 		async () => {
+			// Parsing a remote route manifest is format-specific, so core ships no
+			// default. Without an explicit `extract` the caller should be told what
+			// to install, not get `TypeError: extract is not a function`.
 			const waitUntilFn = mock.fn();
 			const event = { waitUntil: waitUntilFn };
 
 			const originalSkipWaiting = globalThis.skipWaiting;
 			globalThis.skipWaiting = mock.fn();
-
-			const originalFetch = globalThis.fetch;
-			const fetchFn = mock.fn(() =>
-				Promise.resolve(
-					new Response("[]", {
-						status: 200,
-						headers: new Headers({
-							"Content-Type": "application/json",
-							Date: new Date().toString(),
-						}),
-					}),
-				),
-			);
-			globalThis.fetch = fetchFn;
 
 			const config = compileConfig({
 				middlewares: [],
@@ -538,13 +409,17 @@ test("events", async (t) => {
 			config.precache.routes = "http://localhost:8080/precache.json";
 
 			eventInstall(event, config);
-			// Before the fix this rejects with TypeError: extract is not a function.
-			await waitUntilFn.mock.calls[0].arguments[0];
-
-			equal(fetchFn.mock.callCount() >= 1, true);
+			await rejects(
+				async () => await waitUntilFn.mock.calls[0].arguments[0],
+				(e) =>
+					e instanceof TypeError &&
+					e.message ===
+						"precache: `extract` is required when `routes` is a URL. " +
+							"Install @work-bee/precache-json and pass `extract: precacheExtractJSON`, " +
+							"or supply your own (response) => Route[].",
+			);
 
 			globalThis.skipWaiting = originalSkipWaiting;
-			globalThis.fetch = originalFetch;
 		},
 	);
 
@@ -1001,43 +876,6 @@ test("events", async (t) => {
 		},
 	);
 
-	// *** precacheExtractJSON *** //
-	await t.test(
-		"precacheExtractJSON: should return JSON for application/json response",
-		async () => {
-			const data = [{ path: "/index.html" }];
-			const response = new Response(JSON.stringify(data), {
-				headers: new Headers({ "Content-Type": "application/json" }),
-			});
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, data);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: should return empty array for non-JSON response",
-		async () => {
-			const response = new Response("<html></html>", {
-				headers: new Headers({ "Content-Type": "text/html" }),
-			});
-			const result = await precacheExtractJSON(response);
-			deepEqual(result, []);
-		},
-	);
-
-	await t.test(
-		"precacheExtractJSON: is reachable via @work-bee/core/precache-json subpath",
-		async () => {
-			const mod = await import("../precache-json.js");
-			strictEqual(typeof mod.precacheExtractJSON, "function");
-			const body = JSON.stringify([{ path: "/a" }]);
-			const response = new Response(body, {
-				headers: new Headers({ "Content-Type": "application/json" }),
-			});
-			deepEqual(await mod.precacheExtractJSON(response), [{ path: "/a" }]);
-		},
-	);
-
 	await t.test(
 		"eventInstall: wraps fetch failure with a clearer message",
 		async () => {
@@ -1050,6 +888,9 @@ test("events", async (t) => {
 				middlewares: [],
 				precache: {
 					routes: "http://localhost:8080/offline",
+					// Present so the guard passes and the fetch-failure path is what
+					// this test actually exercises; it never runs.
+					extract: async () => [],
 					eventType: false,
 				},
 			});
