@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/monorepo",
-	"version": "0.3.0",
+	"version": "0.4.0",
 	"description": "A tiny, modular ServiceWorker library for secure web applications",
 	"private": true,
 	"type": "module",
@@ -93,6 +93,7 @@
 		"js-yaml": ">=4.2.0",
 		"qs": ">=6.15.2",
 		"ws": ">=8.21.0",
+		"undici@7": "7.29.0",
 		"wrangler": {
 			"esbuild": ">=0.28.1"
 		}
