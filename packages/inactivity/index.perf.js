@@ -5,7 +5,7 @@ import inactivityMiddleware from "./index.js";
 
 test("perf: inactivityMiddleware before + after", async () => {
 	const iterations = 100_000;
-	const { before, after } = inactivityMiddleware({
+	const { before, after, destroy } = inactivityMiddleware({
 		inactivityAllowedInMin: 15,
 		inactivityEvent: () => {},
 	});
@@ -22,4 +22,7 @@ test("perf: inactivityMiddleware before + after", async () => {
 	console.log(
 		`inactivityMiddleware before+after: ${iterations} iterations in ${duration.toFixed(2)}ms (${(duration / iterations).toFixed(4)}ms/op)`,
 	);
+	// Release the 15min timer the constructor armed, otherwise this file alone
+	// keeps `node --test` alive for the full window.
+	destroy();
 });

@@ -11,6 +11,7 @@ interface InactivityMiddlewareResult {
 	before: BeforeMiddleware;
 	after: AfterMiddleware;
 	postMessageEvent: () => void;
+	destroy: () => void;
 }
 
 declare function inactivityMiddleware(

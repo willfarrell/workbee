@@ -1,7 +1,7 @@
 {
-	"name": "@work-bee/offline",
+	"name": "@work-bee/precache-json",
 	"version": "0.4.0",
-	"description": "offline workbee service worker middleware",
+	"description": "JSON precache manifest extractor for workbee service workers",
 	"type": "module",
 	"publishConfig": {
 		"access": "public"
@@ -13,45 +13,35 @@
 			"types": "./index.d.ts",
 			"import": "./index.js",
 			"default": "./index.js"
-		},
-		"./client": {
-			"types": "./client.d.ts",
-			"import": "./client.js",
-			"default": "./client.js"
 		}
 	},
 	"types": "./index.d.ts",
 	"sideEffects": false,
 	"files": [
 		"index.js",
-		"index.d.ts",
-		"client.js",
-		"client.d.ts"
+		"index.d.ts"
 	],
 	"scripts": {
 		"test": "node --test",
 		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
-	"dependencies": {
-		"@work-bee/core": "0.4.0"
-	},
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/willfarrell/workbee.git",
-		"directory": "packages/offline"
+		"directory": "packages/precache-json"
 	},
 	"bugs": {
 		"url": "https://github.com/willfarrell/workbee/issues"
 	},
-	"homepage": "https://workbee.js.org/docs/packages/offline",
+	"homepage": "https://workbee.js.org/docs/packages/precache-json",
 	"keywords": [
 		"workbee",
 		"service",
 		"worker",
 		"sw",
-		"offline",
-		"queue",
-		"network"
+		"precache",
+		"json",
+		"manifest"
 	],
 	"engines": {
 		"node": ">=24"

@@ -249,7 +249,6 @@ export function eventInstall(
 ): void;
 
 /** Extracts a JSON array from a response for use in precaching. */
-export function precacheExtractJSON(response: Response): any[] | Promise<any[]>;
 
 /** Handles the service worker activate event. */
 export function eventActivate(

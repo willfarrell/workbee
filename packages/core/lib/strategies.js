@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-/* global ReadableStream */
+/* global ReadableStream Headers Request */
 
 import { applyExpires, cacheExpired, cacheMatch, cachePut } from "./cache.js";
 import { consoleError } from "./console.js";
@@ -41,6 +41,10 @@ export const strategyNetworkFirst = async (request, event, config) => {
 		if (response.ok) {
 			response = applyExpires(response);
 			if (response.headers.get("Expires")) {
+				// Clone EAGERLY, not inside cachePut: cachePut awaits getCache() before
+				// it clones, and by then the browser may already be streaming this
+				// response to the page -- clone() throws on a disturbed body. The extra
+				// tee is the price of that guarantee; do not "optimize" it away.
 				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
 			}
 		}
@@ -64,6 +68,10 @@ export const strategyStaleIfError = async (request, event, config) => {
 		if (response.ok) {
 			response = applyExpires(response);
 			if (response.headers.get("Expires")) {
+				// Clone EAGERLY, not inside cachePut: cachePut awaits getCache() before
+				// it clones, and by then the browser may already be streaming this
+				// response to the page -- clone() throws on a disturbed body. The extra
+				// tee is the price of that guarantee; do not "optimize" it away.
 				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
 			}
 		}
@@ -154,6 +162,27 @@ export const strategyHTMLPartition = (options = {}) => {
 	return strategyPartition({ ...options, makeRequest });
 };
 
+// Headers that describe the individual fragment they arrived with rather than
+// the concatenation of all of them. Inheriting these onto the composite would
+// advertise the first fragment's length/validator/encoding for the whole
+// stream — truncating it, mis-revalidating it, or telling the client to gunzip
+// bytes `arrayBuffer()` already decoded.
+const fragmentHeaders = [
+	"content-length",
+	"content-encoding",
+	"content-range",
+	"etag",
+	"last-modified",
+];
+
+const compositeHeaders = (source) => {
+	const headers = new Headers(source);
+	for (const name of fragmentHeaders) {
+		headers.delete(name);
+	}
+	return headers;
+};
+
 // { makeRequest, routes, strategy, headers, ... }
 export const strategyPartition = (options = {}) => {
 	return async (request, event, config) => {
@@ -189,7 +218,9 @@ export const strategyPartition = (options = {}) => {
 				for (const r of responses) r.catch(() => {});
 				throw first instanceof Error ? first : new Error(String(first));
 			}
-			headers = first.headers;
+			// Only strip when inheriting from a sub-response; `options.headers`
+			// is the caller explicitly describing the composite.
+			headers = compositeHeaders(first.headers);
 			responses[0] = Promise.resolve(first);
 		}
 

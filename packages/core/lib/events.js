@@ -14,15 +14,20 @@ export const eventInstall = (event, config) => {
 };
 
 const eventInstallWaitUntil = async (event, config) => {
-	let {
-		routes,
-		postMessage,
-		extract = precacheExtractJSON,
-		eventType,
-	} = config.precache;
+	let { routes, postMessage, extract, eventType } = config.precache;
 	// Use and external config
 	if (typeof routes === "string") {
 		const sourceUrl = routes;
+		// The manifest format is an application concern, so core ships no default
+		// parser — name the package that provides the common one rather than
+		// failing later with "extract is not a function".
+		if (typeof extract !== "function") {
+			throw new TypeError(
+				"precache: `extract` is required when `routes` is a URL. " +
+					"Install @work-bee/precache-json and pass `extract: precacheExtractJSON`, " +
+					"or supply your own (response) => Route[].",
+			);
+		}
 		let response;
 		try {
 			response = await fetchInlineStrategy(
@@ -68,34 +73,6 @@ const eventInstallWaitUntil = async (event, config) => {
 	if (eventType) {
 		await postMessage({ type: eventType });
 	}
-};
-
-// TODO move to plugin package
-export const precacheExtractJSON = async (response) => {
-	const rawContentType = response.headers.get("Content-Type");
-	// Stryker disable next-line StringLiteral: this `?? ""` fallback is only used
-	// when the Content-Type header is absent. The fallback string is fed straight
-	// into `.startsWith("application/json")`, which is false for "" and for any
-	// other non-JSON literal (e.g. Stryker's sentinel) alike, so the function
-	// returns [] either way — no observable difference. (The "Content-Type" arg
-	// mutation lives on the line above and is killed by the parse-success tests.)
-	const contentType = rawContentType ?? "";
-	if (
-		!contentType
-			.split(";")[0]
-			.trim()
-			.toLowerCase()
-			.startsWith("application/json")
-	)
-		return [];
-	const parsed = await response.json();
-	if (!Array.isArray(parsed)) {
-		throw new TypeError(
-			"precacheExtractJSON: expected an array of routes, received " +
-				(parsed === null ? "null" : typeof parsed),
-		);
-	}
-	return parsed;
 };
 
 export const eventActivate = (event, config) => {

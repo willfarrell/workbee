@@ -856,6 +856,40 @@ test("afterNetwork: skips duplicate enqueue when cursor value matches", async ()
 	destroy();
 });
 
+test("afterNetwork: re-submitting an earlier request after a different one still enqueues", async () => {
+	// Dedupe must compare against the most recently queued entry, not the
+	// oldest. Queue A, B, then A again: the second A is a distinct user action
+	// (they resubmitted), so it belongs in the queue. Comparing against the head
+	// silently drops it and the user's data is lost.
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, destroy } = await createOffline({
+		enqueueEventType: "enqueue",
+		postMessage: postMessageSpy,
+	});
+	const submit = async (body) => {
+		const request = new Request(`${domain}/503`, {
+			method: "POST",
+			body,
+			headers: { "Content-Type": "application/json" },
+		});
+		const waitUntils = [];
+		await afterNetwork(
+			request,
+			new Response("", { status: 503 }),
+			{ waitUntil: (p) => waitUntils.push(p) },
+			{},
+		);
+		await Promise.all(waitUntils);
+	};
+
+	await submit('{"data":"a"}');
+	await submit('{"data":"b"}');
+	await submit('{"data":"a"}');
+
+	strictEqual(postMessageSpy.mock.callCount(), 3);
+	destroy();
+});
+
 // *** enqueue idbObjectStore.add throws (lines 101-110) *** //
 test("afterNetwork: handles idbObjectStore.add error including QuotaExceededError", async (t) => {
 	t.mock.method(console, "error", () => {});

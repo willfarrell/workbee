@@ -263,6 +263,32 @@ test("fallbackMiddleware.after: Should fetch the fallback as a GET, not copy the
 	equal(fallbackRequest.url, fallbackPath);
 });
 
+test("fallbackMiddleware.after: Should carry the original request's headers onto the fallback request", async (_t) => {
+	// The fallback is fetched as a fresh GET, but content negotiation must
+	// survive: `newRequest(url, { headers: request.headers })` is what keeps
+	// Accept / Accept-Language on the fallback so the right variant is served.
+	const request = new Request(`${domain}/200`, {
+		method: "GET",
+		headers: {
+			Accept: "text/html",
+			"Accept-Language": "fr-CA",
+		},
+	});
+	const error = new Error("network failure");
+	const fallbackPath = `${domain}/cache/found`;
+
+	const fallback = fallbackMiddleware({
+		path: fallbackPath,
+		fallbackStrategy: strategyCacheOnly,
+	});
+	const { cache, event, config } = setupMocks(undefined, fallbackPath);
+	await fallback.after(request, error, event, config);
+
+	const fallbackRequest = cache.match.args[0][0];
+	equal(fallbackRequest.headers.get("Accept"), "text/html");
+	equal(fallbackRequest.headers.get("Accept-Language"), "fr-CA");
+});
+
 test("fallbackMiddleware.after: Should reject when after-hook is given a value that breaks an unguarded ok access", async (_t) => {
 	const request = new Request(`${domain}/200`, { method: "GET" });
 	const fallbackPath = `${domain}/cache/found`;

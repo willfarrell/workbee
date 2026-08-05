@@ -12,6 +12,7 @@
 @import "@willfarrell-ds/vanilla/elements/hgroup.css";
 @import "@willfarrell-ds/vanilla/elements/hr.css";
 @import "@willfarrell-ds/vanilla/elements/input.css";
+@import "@willfarrell-ds/vanilla/elements/input[type=search].css";
 @import "@willfarrell-ds/vanilla/elements/label.css";
 @import "@willfarrell-ds/vanilla/elements/li.css";
 @import "@willfarrell-ds/vanilla/elements/nav.css";
@@ -19,7 +20,6 @@
 @import "@willfarrell-ds/vanilla/elements/p.css";
 @import "@willfarrell-ds/vanilla/elements/picture.css";
 @import "@willfarrell-ds/vanilla/elements/pre.css";
-@import "@willfarrell-ds/vanilla/elements/s.css";
 @import "@willfarrell-ds/vanilla/elements/select.css";
 @import "@willfarrell-ds/vanilla/elements/table.css";
 @import "@willfarrell-ds/vanilla/elements/ul.css";
@@ -27,6 +27,7 @@
 @import "@willfarrell-ds/vanilla/classes/li.card.css";
 @import "@willfarrell-ds/vanilla/classes/details.chevron.css";
 @import "@willfarrell-ds/vanilla/classes/select.chevron.css";
+@import "@willfarrell-ds/vanilla/classes/.container.css";
 @import "@willfarrell-ds/vanilla/classes/.container-aside.css";
 @import "@willfarrell-ds/vanilla/classes/.container-slices.css";
 @import "@willfarrell-ds/vanilla/classes/.container-toc.css";

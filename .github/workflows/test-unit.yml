@@ -2,6 +2,8 @@ name: Tests (unit)
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 env:
   NODE_VERSION: 24.x
@@ -17,6 +19,7 @@ jobs:
   unit:
     name: Tests (unit)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Harden runner
