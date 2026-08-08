@@ -5,11 +5,11 @@
 	"http": {
 		"headers": {
 			"Connection-Allowlist": "(response-origin);report-to=default",
-			"Connection-Allowlist-Report-Only": "(response-origin);report-to=default",
-			"Content-Security-Policy-Report-Only": "base-uri 'none';default-src 'report-sample' 'report-sha256';form-action 'none';frame-ancestors 'none';report-to default;report-uri https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org;require-trusted-types-for 'script'",
+			"Content-Security-Policy": "base-uri 'none';connect-src 'self';default-src 'report-sample' 'report-sha256';form-action 'self';frame-ancestors 'none';img-src 'self';manifest-src 'self';report-to default;report-uri https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org;require-trusted-types-for 'script';script-src 'self' 'report-sample' 'report-sha256';script-src-attr 'report-sample' 'report-sha256';style-src 'self' 'report-sample' 'report-sha256';style-src-attr 'report-sample' 'report-sha256';upgrade-insecure-requests;worker-src 'self'",
+			"Content-Security-Policy-Report-Only": "base-uri 'none';default-src 'report-sample' 'report-sha256';form-action 'none';frame-ancestors 'none';img-src 'self';report-to default;report-uri https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org;require-trusted-types-for 'script';script-src-elem 'self' 'report-sample' 'report-sha256';style-src-elem 'self' 'report-sample' 'report-sha256'",
 			"Cross-Origin-Embedder-Policy": "require-corp;report-to=default",
-			"Cross-Origin-Resource-Policy": "same-origin",
 			"Cross-Origin-Opener-Policy": "same-origin;report-to=default",
+			"Cross-Origin-Resource-Policy": "same-origin",
 			"Document-Isolation-Policy": "isolate-and-require-corp;report-to=\"default\"",
 			"Document-Policy-Report-Only": "*;report-to=default",
 			"Integrity-Policy": "blocked-destinations=(),endpoints=(default)",
