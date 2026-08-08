@@ -1,0 +1,41 @@
+name: tardisec
+on:
+  schedule:
+    - cron: "59 5 * * 0"
+  workflow_dispatch: {}
+
+permissions: {}
+concurrency:
+  group: tardisec-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync config
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write       # mint the OIDC token tardisec verifies
+      contents: write       # push the sync branch
+      pull-requests: write  # open the PR
+    steps:
+      - uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: block
+          disable-telemetry: true
+          allowed-endpoints: >
+            github.com:443
+            api.github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            api.tardisec.com:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: tardisec/integration-github-action@23e9d4e5663740dc0daefd417b28a7eeb31bfb36 # v0.0.0
+        with:
+          domain: workbee.js.org
+          branch: develop
+          path: /websites/workbee.js.org/
+          files: |
+            .tardisec.json
+            .tardisec.sveltekit.json
