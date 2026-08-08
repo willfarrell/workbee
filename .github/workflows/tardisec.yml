@@ -34,7 +34,7 @@ jobs:
       - uses: tardisec/integration-github-action@c7cd9150af8f374c2999e974d903d680453d828b # main
         with:
           domain: workbee.js.org
-          path: /websites/workbee.js.org/
+          path: /websites/workbee.js.org
           files: |
             .tardisec.json
             .tardisec.sveltekit.json
