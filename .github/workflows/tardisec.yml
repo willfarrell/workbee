@@ -31,10 +31,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: tardisec/integration-github-action@23e9d4e5663740dc0daefd417b28a7eeb31bfb36 # v0.0.0
+      - uses: tardisec/integration-github-action@c7cd9150af8f374c2999e974d903d680453d828b # main
         with:
           domain: workbee.js.org
-          branch: develop
           path: /websites/workbee.js.org/
           files: |
             .tardisec.json
