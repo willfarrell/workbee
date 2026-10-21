@@ -3,9 +3,16 @@
 /* global ReadableStream Headers Request */
 
 import { applyExpires, cacheExpired, cacheMatch, cachePut } from "./cache.js";
+import { cacheable, noCacheRegExp } from "./cacheable.js";
 import { consoleError } from "./console.js";
 import { fetchInlineStrategy } from "./events.js";
-import { isResponse, newRequest, newResponse, urlRemoveHash } from "./http.js";
+import {
+	deleteHeaderFromResponse,
+	isResponse,
+	newRequest,
+	newResponse,
+	urlRemoveHash,
+} from "./http.js";
 
 export const strategyNetworkOnly = async (request, event, config) => {
 	for (const beforeNetwork of config.beforeNetwork) {
@@ -32,30 +39,6 @@ export const strategyCacheOnly = async (request, _event, config) => {
 		return response;
 	}
 	throw response;
-};
-
-// A Vary on a credential can't be honoured: cachePut never stores credentials
-// in the key, so an anonymous request would match the per-user entry.
-const varyCredentialRegExp = /(?:^|[,\s])(?:authorization|cookie)(?:$|[,\s])/i;
-// Token-boundary, case-insensitive Cache-Control directives (RFC 9111 §5.2).
-const noStoreRegExp = /(?:^|[,\s])no-store(?:$|[,\s])/i;
-const noCacheRegExp = /(?:^|[,\s])no-cache(?:$|[,\s=])/i;
-
-// Only GET: entries are keyed as a GET of the URL, so a POST/HEAD response
-// would be served to later GETs. cache.put() rejects partial content and
-// `Vary: *` (header names can't contain "*", so a substring check is exact).
-const cacheable = (request, response) => {
-	// Stryker disable next-line StringLiteral: any fallback without "*" or a
-	// credential token passes both checks below, exactly like "".
-	const vary = response.headers.get("Vary") ?? "";
-	return (
-		request.method === "GET" &&
-		response.ok &&
-		response.status !== 206 &&
-		!vary.includes("*") &&
-		!varyCredentialRegExp.test(vary) &&
-		!noStoreRegExp.test(response.headers.get("Cache-Control"))
-	);
 };
 
 // Network, then store a copy when HTTP freshness allows it. `no-cache` means
@@ -85,11 +68,19 @@ const cachedOrThrow = async (error, request, config) => {
 };
 
 // Install-time default: always store. Precache freshness is owned by the SW
-// version (cachePrefix), not by the asset's Cache-Control.
+// version (cachePrefix), not by the asset's Cache-Control, so the stored copy
+// drops Expires; cacheExpired would otherwise mark it stale.
 export const strategyPrecache = async (request, event, config) => {
 	const response = await strategyNetworkOnly(request, event, config);
 	if (cacheable(request, response)) {
-		event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+		event.waitUntil(
+			cachePut(
+				config.cacheKey,
+				request,
+				// Clones the body synchronously, like the eager clone in networkAndCache.
+				deleteHeaderFromResponse(response, "Expires"),
+			),
+		);
 	}
 	return response;
 };
@@ -197,6 +188,9 @@ const fragmentHeaders = [
 	"last-modified",
 ];
 
+// Fetch spec "null body status"; Response() throws when given a body with one.
+const nullBodyStatuses = [101, 103, 204, 205, 304];
+
 const compositeHeaders = (source) => {
 	const headers = new Headers(source);
 	for (const name of fragmentHeaders) {
@@ -245,8 +239,11 @@ export const strategyPartition = (options = {}) => {
 			// is the caller explicitly describing the composite.
 			headers = compositeHeaders(first.headers);
 			// Headers like Location or WWW-Authenticate only make sense with the
-			// status they came with.
-			init = { status: first.status, statusText: first.statusText };
+			// status they came with. Opaque (0) and null-body statuses can't wrap
+			// the composite stream, so those keep the default 200.
+			if (first.status && !nullBodyStatuses.includes(first.status)) {
+				init = { status: first.status, statusText: first.statusText };
+			}
 			responses[0] = Promise.resolve(first);
 		}
 

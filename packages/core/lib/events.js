@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
 import { cachePut, cachesDelete } from "./cache.js";
+import { cacheable } from "./cacheable.js";
 import { consoleError } from "./console.js";
 import { isRequest, isResponse, newRequest, newResponse } from "./http.js";
 import { compileRoute } from "./route.js";
@@ -72,7 +73,7 @@ const eventInstallWaitUntil = async (event, config) => {
 	// Fail install on any missing asset: a resolved install lets activate purge
 	// the previous version's caches while this one is incomplete.
 	for (const [i, response] of responses.entries()) {
-		if (!response.ok) {
+		if (!isResponse(response) || !response.ok) {
 			throw new Error(
 				`precache: failed to fetch "${routes[i].path}": ${isResponse(response) ? response.status : response}`,
 				{ cause: response },
@@ -227,16 +228,19 @@ export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 		}
 		if (!isRequest(request)) return;
 		const routeConfig = findRouteConfig(config, request);
-		if (typeof response === "string") {
-			response = newResponse({ body: response }, headers);
-		}
+		// Built inside the async function so invalid posted headers (which
+		// `new Headers()` throws on) are swallowed like any other failure.
+		const store = async () => {
+			if (typeof response === "string") {
+				response = newResponse({ body: response }, headers);
+			}
+			return cachePut(routeConfig.cacheKey, request, response);
+		};
 		// Keep the worker alive until the write lands and swallow failures so a
 		// rejected cache write never becomes an unhandled rejection. `waitUntil`
 		// is only present on a real ExtendableMessageEvent; the optional call lets
 		// the handler also be driven directly (e.g. awaited) without one.
-		const promise = cachePut(routeConfig.cacheKey, request, response).catch(
-			consoleError,
-		);
+		const promise = store().catch(consoleError);
 		messageEvent.waitUntil?.(promise);
 		return promise;
 	};
@@ -254,13 +258,17 @@ const backgroundFetchSuccessEventWaitUntil = async (
 	// each into the cache of the route it would be served from.
 	const records = await registration.matchAll();
 	await Promise.all(
-		records.map(async ({ request, responseReady }) =>
-			cachePut(
+		records.map(async ({ request, responseReady }) => {
+			const response = await responseReady;
+			// Same filter as the strategies: cache.put rejects some of these, and
+			// a credential Vary would be shared across users.
+			if (!cacheable(request, response)) return;
+			await cachePut(
 				findRouteConfig(config, request).cacheKey,
 				request,
-				await responseReady,
-			),
-		),
+				response,
+			);
+		}),
 	);
 	const channel = new BroadcastChannel(registration.id);
 	channel.postMessage({ stored: true });

@@ -1129,6 +1129,56 @@ test("events", async (t) => {
 	);
 
 	await t.test(
+		"backgroundFetchSuccessEvent: skips records the strategies would not cache",
+		async (tt) => {
+			// A 206 or `Vary: *` makes cache.put reject (losing the broadcast);
+			// a `Vary: Cookie` entry would be served to every user.
+			const posted = [];
+			const originalBroadcastChannel = globalThis.BroadcastChannel;
+			globalThis.BroadcastChannel = class {
+				postMessage = (m) => posted.push(m);
+				close() {}
+			};
+			tt.after(() => {
+				globalThis.BroadcastChannel = originalBroadcastChannel;
+			});
+			const config = compileConfig({ cacheName: "bgf-skip" });
+			const record = (path, init) => ({
+				request: new Request(`http://localhost:8080${path}`),
+				responseReady: Promise.resolve(new Response(path, init)),
+			});
+			const waitUntils = [];
+			backgroundFetchSuccessEvent(
+				{
+					waitUntil: (p) => waitUntils.push(p),
+					registration: {
+						id: "skip",
+						matchAll: async () => [
+							record("/ok"),
+							record("/partial", { status: 206 }),
+							record("/star", { headers: { Vary: "*" } }),
+							record("/cookie", { headers: { Vary: "Cookie" } }),
+						],
+					},
+				},
+				config,
+			);
+			await Promise.all(waitUntils);
+
+			const stored = async (path) =>
+				(await caches.match(new Request(`http://localhost:8080${path}`), {
+					cacheName: "sw-bgf-skip",
+				})) instanceof Response;
+			equal(await stored("/ok"), true);
+			equal(await stored("/partial"), false);
+			equal(await stored("/star"), false);
+			equal(await stored("/cookie"), false);
+			deepEqual(posted, [{ stored: true }]);
+			await caches.delete("sw-bgf-skip");
+		},
+	);
+
+	await t.test(
 		"backgroundFetchSuccessEvent: should call waitUntil",
 		async () => {
 			const waitUntilFn = mock.fn();
@@ -1196,6 +1246,32 @@ test("events", async (t) => {
 			// of the unwrapped-Error rethrow).
 			strictEqual(caught.cause instanceof Error, true);
 			strictEqual(/offline/.test(caught.cause.message), true);
+		},
+	);
+
+	await t.test(
+		"eventInstall: a precache strategy that yields no Response fails with the precache message",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+
+			const config = compileConfig({
+				middlewares: [],
+				precache: {
+					routes: [{ path: "http://localhost:8080/missing" }],
+					strategy: async () => undefined,
+					eventType: false,
+				},
+			});
+
+			eventInstall(event, config);
+			await rejects(
+				waitUntilFn.mock.calls[0].arguments[0],
+				/precache: failed to fetch "http:\/\/localhost:8080\/missing"/,
+			);
+			globalThis.skipWaiting = originalSkipWaiting;
 		},
 	);
 
@@ -1533,6 +1609,31 @@ test("events", async (t) => {
 			strictEqual(waitUntil.mock.calls[0].arguments[0], returned);
 			await returned;
 			equal(putFn.mock.callCount(), 1);
+		},
+	);
+
+	await t.test(
+		"cacheOverrideEvent: invalid posted headers are swallowed, not thrown",
+		async (tt) => {
+			const putFn = mock.fn(() => Promise.resolve());
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
+			const consoleErrorMock = tt.mock.method(console, "error", () => {});
+
+			const config = compileConfig({ middlewares: [], routes: [] });
+			const handler = cacheOverrideEvent(config, {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/test",
+					response: "hi",
+					headers: { "bad name": "x" },
+				},
+			});
+			equal(putFn.mock.callCount(), 0);
+			equal(consoleErrorMock.mock.callCount(), 1);
 		},
 	);
 

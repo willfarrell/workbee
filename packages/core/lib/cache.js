@@ -92,8 +92,8 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
 };
 
 // Checks the Expires header only. Cache-Control max-age is converted to an
-// Expires header by strategyNetworkFirst before caching, so this covers
-// all responses that flow through the standard strategies.
+// Expires header by the network strategies before caching; strategyPrecache
+// stores without Expires, so precached entries never expire.
 export const cacheExpired = (response) => {
 	if (!response) return;
 	const expires = response.headers.get("Expires");
@@ -105,10 +105,10 @@ export const cacheExpired = (response) => {
 
 export const cacheDeleteExpired = async (cacheKey) => {
 	const cache = await caches.open(cacheKey);
-	// Enumerate request keys rather than response URLs: entries are written
-	// with `cache.put(request.url, ...)`, and synthetic/redirected responses
-	// have a `response.url` of "" or one that differs from the request key, so
-	// `cache.delete(response.url)` would never purge them.
+	// Enumerate request keys rather than response URLs: entries are keyed by
+	// cacheKeyRequest (a URL, or a Request carrying the Vary'd headers), and
+	// synthetic/redirected responses have a `response.url` of "" or one that
+	// differs from the key, so `cache.delete(response.url)` would miss them.
 	const requests = await cache.keys();
 	// Check (and purge) every entry concurrently; a serial match/delete pair
 	// per entry makes quota recovery O(entries) round-trips.

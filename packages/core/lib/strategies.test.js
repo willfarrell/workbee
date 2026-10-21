@@ -1467,6 +1467,31 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
+		"strategyPartition: a first sub-response with a null-body status still yields a 200 composite",
+		async (_t) => {
+			// 204/304 can't carry the composite body; inheriting them would make
+			// the Response constructor throw with the stream's waitUntil pending.
+			const { strategyPartition } = await import("../index.js");
+			const noContent = () => new Response(null, { status: 204 });
+			const text = () => new Response("b");
+			const waitUntils = [];
+			const event = { waitUntil: (p) => waitUntils.push(p) };
+			const request = new Request(`${domain}/200`);
+			const response = await strategyPartition(
+				compileConfig({
+					routes: [
+						{ path: "/a", strategy: noContent },
+						{ path: "/b", strategy: text },
+					],
+				}),
+			)(request, event, {});
+			equal(response.status, 200);
+			equal(await response.text(), "b");
+			await Promise.all(waitUntils);
+		},
+	);
+
+	await t.test(
 		"strategyPartition: non-Error, non-Response first sub-response is wrapped into an Error",
 		async (_t) => {
 			// Covers the first-sub guard's `new Error(String(first))` arm: a
@@ -2206,6 +2231,31 @@ test("Strategies", async (t) => {
 				await event.resolveWaitUntils();
 				equal(cache.put.callCount, puts, cacheControl);
 			}
+		},
+	);
+
+	await t.test(
+		"strategyPrecache: stored entry ignores the origin's Expires",
+		async (tt) => {
+			// `Expires: 0` is common on HTML; a precached copy must not read as
+			// stale (and be evicted or refetched) before the SW version changes.
+			const { cacheExpired, strategyPrecache } = await import("../index.js");
+			tt.mock.method(
+				globalThis,
+				"fetch",
+				async () => new Response("ok", { headers: { Expires: "0" } }),
+			);
+			const { cache, event, config } = setupMocks(strategyPrecache, null, tt);
+			const response = await strategyPrecache(
+				new Request(`${domain}/pc`),
+				event,
+				config,
+			);
+			await event.resolveWaitUntils();
+			const [, stored] = cache.put.args[0];
+			equal(cacheExpired(stored), false);
+			equal(await stored.text(), "ok");
+			equal(await response.text(), "ok");
 		},
 	);
 });
