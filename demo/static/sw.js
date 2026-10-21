@@ -37,7 +37,6 @@ import {
 	eventFetch,
 	eventInstall,
 	pathPattern,
-	postMessageToFocused,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
 	strategyCacheOnly,
@@ -58,14 +57,10 @@ import saveDataMiddleware from "../../packages/save-data/index.js";
 import sessionMiddleware from "../../packages/session/index.js";
 
 // Shared middleware
-// Short window + observable event so the e2e suite can drive it. The page
-// resets the timer by posting `{ type: "inactivity" }` (see the `inactivity`
-// message handler below); when the window lapses with no activity the worker
-// notifies the page with `{ type: "inactive" }`.
-const inactivity = inactivityMiddleware({
-	inactivityAllowedInMin: 0.05, // 3s
-	inactivityEvent: () => postMessageToFocused({ type: "inactive" }),
-});
+// The inactivity countdown runs in the page (`@work-bee/inactivity/client`, see
+// index.html); this tells every page when a request starts or finishes so
+// network activity also counts as activity.
+const inactivity = inactivityMiddleware();
 const offline = offlineMiddleware({
 	pollDelay: 0, // Disabled in favour of `onlineEvent`
 	// Notify the page when a request is queued / successfully replayed so the
@@ -188,9 +183,10 @@ const config = compileConfig({
 			cacheName: "fallbackMiddleware",
 			strategy: strategyCacheOnly,
 			middlewares: [
+				// The default fallback strategy finds the precached page in any
+				// cache, then falls back to the network.
 				fallbackMiddleware({
 					path: "/middleware/fallbackMiddleware",
-					fallbackStrategy: strategyCacheFirst, // default
 				}),
 				cacheControlMiddleware({ cacheControl: "max-age=60" }),
 				loggerMiddleware(),
@@ -238,6 +234,7 @@ const config = compileConfig({
 	strategy: strategyNetworkOnly,
 	middlewares: [
 		cacheControlMiddleware({ cacheControl: "max-age=60" }),
+		inactivity,
 		loggerMiddleware(),
 	],
 });
@@ -261,7 +258,7 @@ addEventListener("message", (event) => {
 	if (!data || !Object.hasOwn(messageEvents, data.type)) return;
 	console.log("message", data);
 	// Pass the whole event: `cacheOverrideEvent` reads `event.source`/`event.data`
-	// (and calls `event.waitUntil` itself); the offline/inactivity handlers ignore
+	// (and calls `event.waitUntil` itself); the offline handler ignores
 	// the argument. `Promise.resolve` normalises a possibly-undefined return so
 	// `waitUntil` never receives a non-promise.
 	event.waitUntil(Promise.resolve(messageEvents[data.type](event)));
@@ -272,7 +269,6 @@ const messageEvents = {
 		allowedOrigins: [self.location.origin],
 	}),
 	online: offline.postMessageEvent,
-	inactivity: inactivity.postMessageEvent,
 };
 
 addEventListener("sync", (event) => {
@@ -297,6 +293,8 @@ const periodicSyncEvents = {
 	online: offline.postMessageEvent,
 };
 
-addEventListener("backgroundfetchsuccess", backgroundFetchSuccessEvent);
+addEventListener("backgroundfetchsuccess", (event) =>
+	backgroundFetchSuccessEvent(event, config),
+);
 
 addEventListener("backgroundfetchfail", backgroundFetchFailEvent);

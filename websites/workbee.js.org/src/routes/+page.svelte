@@ -1,18 +1,18 @@
 <script>
-import Card from "@design-system/components/Card.svelte";
-import H1 from "@design-system/components/Heading1.svelte";
-import H2 from "@design-system/components/Heading2.svelte";
-import H3 from "@design-system/components/Heading3.svelte";
-import Icon from "@design-system/components/Icon.svelte";
-import Image from "@design-system/components/Image.svelte";
-import LayoutSlices from "@design-system/components/LayoutSlices.svelte";
-import A from "@design-system/elements/a.svelte";
-import Div from "@design-system/elements/div.svelte";
-import Li from "@design-system/elements/li.svelte";
-import P from "@design-system/elements/p.svelte";
-import Section from "@design-system/elements/section.svelte";
-import Span from "@design-system/elements/span.svelte";
-import Ul from "@design-system/elements/ul.svelte";
+import Card from "@willfarrell-ds/svelte/components/Card.svelte";
+import H1 from "@willfarrell-ds/svelte/components/Heading1.svelte";
+import H2 from "@willfarrell-ds/svelte/components/Heading2.svelte";
+import H3 from "@willfarrell-ds/svelte/components/Heading3.svelte";
+import Icon from "@willfarrell-ds/svelte/components/Icon.svelte";
+import Image from "@willfarrell-ds/svelte/components/Image.svelte";
+import LayoutSlices from "@willfarrell-ds/svelte/components/LayoutSlices.svelte";
+import A from "@willfarrell-ds/svelte/elements/a.svelte";
+import Div from "@willfarrell-ds/svelte/elements/div.svelte";
+import Li from "@willfarrell-ds/svelte/elements/li.svelte";
+import P from "@willfarrell-ds/svelte/elements/p.svelte";
+import Section from "@willfarrell-ds/svelte/elements/section.svelte";
+import Span from "@willfarrell-ds/svelte/elements/span.svelte";
+import Ul from "@willfarrell-ds/svelte/elements/ul.svelte";
 </script>
 
 <svelte:head>
@@ -47,13 +47,13 @@ import Ul from "@design-system/elements/ul.svelte";
             <Ul class="grid">
                 <Li class="stat">
                     <H3><Icon src="/img/icons.svg#feather" />
-                        <Span>&lt;1KB</Span></H3>
-                    <P>Minified + compressed</P>
+                        <Span>3.7KB</Span></H3>
+                    <P>All of core, minified + brotli</P>
                 </Li>
                 <Li class="stat">
                     <H3><Icon src="/img/icons.svg#list-check" />
                         <Span>100%</Span></H3>
-                    <P>Test coverage</P>
+                    <P>Line coverage (CI enforces 99%+)</P>
                 </Li>
                 <Li class="stat">
                     <H3><Icon src="/img/icons.svg#shield" />
@@ -159,7 +159,7 @@ addEventListener("fetch", (event) => eventFetch(event, config))`}</code></pre>
             </Card>
             <Card class="package" id="cache-control">
                 <H3><A href="/docs/packages/cache-control">@work-bee/cache-control</A></H3>
-                <P>HTTP Cache-Control middleware</P>
+                <P>Sets Cache-Control on network responses</P>
             </Card>
             <Card class="package" id="fallback">
                 <H3><A href="/docs/packages/fallback">@work-bee/fallback</A></H3>
@@ -176,6 +176,10 @@ addEventListener("fetch", (event) => eventFetch(event, config))`}</code></pre>
             <Card class="package" id="offline">
                 <H3><A href="/docs/packages/offline">@work-bee/offline</A></H3>
                 <P>Offline request queueing</P>
+            </Card>
+            <Card class="package" id="precache-json">
+                <H3><A href="/docs/packages/precache-json">@work-bee/precache-json</A></H3>
+                <P>Precache routes from a JSON manifest</P>
             </Card>
             <Card class="package" id="save-data">
                 <H3><A href="/docs/packages/save-data">@work-bee/save-data</A></H3>

@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+// These tests fulfil the ServiceWorker's own requests with context.route();
+// Playwright only intercepts ServiceWorker network traffic in Chromium.
+const SW_ROUTE_ONLY_CHROMIUM =
+	"Playwright routes ServiceWorker-originated requests only in Chromium";
+
 const localhost = "/index.html";
 
 const awaitServiceWorker = async (page) => {
@@ -22,8 +27,10 @@ const TOKEN = "session-token-abc123";
 
 test.describe("sessionMiddleware", () => {
 	test("strips Authorization on login, carries Bearer on authz, clears on logout", async ({
+		browserName,
 		browser,
 	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 

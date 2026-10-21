@@ -16,6 +16,7 @@ describe("offline", () => {
 			afterNetwork: AfterMiddleware;
 			postMessageEvent: () => Promise<void>;
 			destroy: () => void;
+			clear: () => Promise<void>;
 		}>();
 	});
 

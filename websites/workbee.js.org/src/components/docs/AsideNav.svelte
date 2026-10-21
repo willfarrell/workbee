@@ -1,10 +1,11 @@
 <script>
-import LayoutAsideNav from "@design-system/components/LayoutAsideNav.svelte";
+import LayoutAsideNav from "@willfarrell-ds/svelte/components/LayoutAsideNav.svelte";
 
 const nav = {
 	"Getting Started": {
 		Introduction: "/docs",
 		"Quick Start": "/docs/quick-start",
+		Concepts: "/docs/concepts",
 	},
 	Packages: {
 		core: "/docs/packages/core",

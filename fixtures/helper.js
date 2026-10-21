@@ -1,23 +1,12 @@
 /* global Headers Request Response */
 
 import makeServiceWorkerEnv from "service-worker-mock";
-import {
-	compileConfig,
-	openCaches,
-	strategyCacheOnly,
-} from "../packages/core/index.js";
+import { compileConfig, strategyCacheOnly } from "../packages/core/index.js";
 
 const { caches } = makeServiceWorkerEnv();
-// Tests frequently stub `openCaches[key] = mock` directly. getCache in
-// cache.js now calls `caches.has(key)` to detect stale references; without
-// this shim those stubs would be discarded as "stale". Keep `caches.has`
-// truthy for any key tests registered on openCaches.
-const originalHas = caches.has.bind(caches);
-caches.has = async (key) => {
-	if (openCaches[key]) return true;
-	return originalHas(key);
-};
-
+// The mock CacheStorage keeps caches in a plain name -> Cache map; tests stub a
+// cache by assigning into it (caches.open/has/match all read from it).
+export const cacheStore = caches.caches;
 export const cachesOverride = caches;
 export const documentOverride = {
 	console: {
@@ -110,7 +99,7 @@ const mockResponses = {
 				"Content-Type": "application/json; charset=UTF-8",
 				"Cache-Control": "max-age=86400",
 				Date: new Date().toString(),
-				Expires: (Date.now() + 86400 * 1000).toString(),
+				Expires: new Date(Date.now() + 86400 * 1000).toUTCString(),
 			}),
 		}),
 	[`${domain}/cache/expired`]: () =>
@@ -181,11 +170,13 @@ export const setupMocks = (
 	t,
 ) => {
 	const cache = {
+		// The mock's cross-cache `caches.match` probes every cache's `store`.
+		store: new Map(),
 		put: spy(),
 		match: cacheMatch ? spy(() => fetch(new Request(cacheMatch))) : spy(),
 		delete: spy(),
 	};
-	openCaches["sw-default"] = cache;
+	cacheStore["sw-default"] = cache;
 
 	const middleware = {
 		before: spy((request) => request),
@@ -206,7 +197,7 @@ export const setupMocks = (
 	});
 
 	const cleanup = () => {
-		delete openCaches["sw-default"];
+		delete cacheStore["sw-default"];
 	};
 	if (t?.after) t.after(cleanup);
 

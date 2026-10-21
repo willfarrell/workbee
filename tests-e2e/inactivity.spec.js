@@ -18,70 +18,95 @@ const awaitServiceWorker = async (page) => {
 	});
 };
 
-// Collects `{ type: "inactive" }` notifications the worker posts to the page.
+// The demo page's inactivity client dispatches `inactive` on window when its
+// countdown lapses. Record them from before any page script runs.
 const listenForInactive = async (page) => {
-	await page.evaluate(() => {
+	await page.addInitScript(() => {
 		window.__inactive = [];
-		window.navigator.serviceWorker.addEventListener("message", (event) => {
-			if (event.data?.type === "inactive") window.__inactive.push(Date.now());
-		});
+		window.addEventListener("inactive", () =>
+			window.__inactive.push(Date.now()),
+		);
 	});
 };
 
-// The demo wires inactivityMiddleware with a 3s (0.05min) window.
+const inactiveCount = (page) => page.evaluate(() => window.__inactive.length);
+
+// The demo wires the inactivity client with a 3s (0.05min) window.
 const INACTIVITY_WINDOW_MS = 3000;
 
-test.describe("inactivityMiddleware", () => {
+// Repeats `action` every second for longer than one inactivity window.
+const keepActive = async (page, action) => {
+	const start = Date.now();
+	while (Date.now() - start < INACTIVITY_WINDOW_MS * 1.5) {
+		await action();
+		await page.waitForTimeout(1000);
+	}
+};
+
+test.describe("inactivity", () => {
 	test("notifies the page once the inactivity window lapses with no activity", async ({
 		browser,
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-
-		await awaitServiceWorker(page);
 		await listenForInactive(page);
 
-		// No activity is posted: the worker's timer should fire and notify us.
+		await awaitServiceWorker(page);
+
 		await expect
-			.poll(() => page.evaluate(() => window.__inactive.length), {
-				timeout: INACTIVITY_WINDOW_MS * 3,
-			})
+			.poll(() => inactiveCount(page), { timeout: INACTIVITY_WINDOW_MS * 3 })
 			.toBeGreaterThanOrEqual(1);
 
 		await context.close();
 	});
 
-	test("activity messages reset the timer so no notification fires early", async ({
+	test("DOM activity resets the countdown", async ({ browser }) => {
+		const context = await browser.newContext();
+		const page = await context.newPage();
+		await listenForInactive(page);
+
+		await awaitServiceWorker(page);
+		// Discard any lapse that happened while the worker was installing.
+		await page.evaluate(() => {
+			window.__inactive.length = 0;
+		});
+
+		await keepActive(page, () => page.keyboard.press("Shift"));
+		expect(await inactiveCount(page)).toBe(0);
+
+		// Stop interacting; the countdown now lapses.
+		await expect
+			.poll(() => inactiveCount(page), { timeout: INACTIVITY_WINDOW_MS * 3 })
+			.toBeGreaterThanOrEqual(1);
+
+		await context.close();
+	});
+
+	test("requests handled by the ServiceWorker reset the countdown", async ({
 		browser,
 	}) => {
 		const context = await browser.newContext();
 		const page = await context.newPage();
-
-		await awaitServiceWorker(page);
 		await listenForInactive(page);
 
-		// Drive activity the same way the inactivity client does on DOM events:
-		// post `{ type: "inactivity" }` every second for longer than one window.
-		// Each message re-arms the timer, so no `inactive` notification should
-		// arrive while we keep the session "active".
-		const start = Date.now();
-		while (Date.now() - start < INACTIVITY_WINDOW_MS * 1.5) {
-			await page.evaluate(() =>
-				window.navigator.serviceWorker.controller.postMessage({
-					type: "inactivity",
-				}),
-			);
-			await page.waitForTimeout(1000);
-		}
-
-		const duringActivity = await page.evaluate(() => window.__inactive.length);
-		expect(duringActivity).toBe(0);
-
-		// Stop sending activity; the timer now lapses and the notification fires.
+		await awaitServiceWorker(page);
 		await expect
-			.poll(() => page.evaluate(() => window.__inactive.length), {
-				timeout: INACTIVITY_WINDOW_MS * 3,
-			})
+			.poll(() =>
+				page.evaluate(() => Boolean(window.navigator.serviceWorker.controller)),
+			)
+			.toBe(true);
+		await page.evaluate(() => {
+			window.__inactive.length = 0;
+		});
+
+		// No DOM events: only the worker's request notifications keep it alive.
+		await keepActive(page, () =>
+			page.evaluate(() => fetch("/index.html").then((r) => r.text())),
+		);
+		expect(await inactiveCount(page)).toBe(0);
+
+		await expect
+			.poll(() => inactiveCount(page), { timeout: INACTIVITY_WINDOW_MS * 3 })
 			.toBeGreaterThanOrEqual(1);
 
 		await context.close();

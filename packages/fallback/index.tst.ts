@@ -23,4 +23,10 @@ describe("fallback", () => {
 		});
 		expect(result.after).type.toBe<AfterMiddleware>();
 	});
+
+	test("requires options with a path", () => {
+		expect(fallback).type.not.toBeCallableWith();
+		expect(fallback).type.not.toBeCallableWith({});
+		expect(fallback).type.toBeCallableWith({ path: "/offline.html" });
+	});
 });

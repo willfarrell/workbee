@@ -44,8 +44,19 @@ describe("session", () => {
 		});
 	});
 
-	test("getTokenAuthorization returns string", () => {
-		expect(getTokenAuthorization({} as Response)).type.toBe<string>();
+	test("getTokenAuthorization returns string | undefined", () => {
+		expect(getTokenAuthorization({} as Response)).type.toBe<
+			string | undefined
+		>();
+	});
+
+	test("authnGetToken may return undefined", () => {
+		expect(session).type.toBeCallableWith({
+			authnGetToken: getTokenAuthorization,
+		});
+		expect(session).type.toBeCallableWith({
+			authnGetToken: async (_response: Response) => undefined,
+		});
 	});
 
 	test("getExpiryJWT returns number", () => {

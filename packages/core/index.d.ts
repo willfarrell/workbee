@@ -19,17 +19,18 @@ export type BeforeMiddleware = (
 /** Middleware applied after the strategy executes. */
 export type AfterMiddleware = (
 	request: Request,
-	response: Response | Error,
+	/** `undefined` when a cache-only lookup missed. */
+	response: Response | Error | undefined,
 	event: ExtendableEvent,
 	config: RouteConfig,
 ) => Response | Error | Promise<Response | Error>;
 
-/** Middleware object with optional lifecycle hooks. */
+/** Middleware object with optional lifecycle hooks; `false` disables a hook. */
 export interface Middleware {
-	before?: BeforeMiddleware;
-	beforeNetwork?: BeforeMiddleware;
-	afterNetwork?: AfterMiddleware;
-	after?: AfterMiddleware;
+	before?: BeforeMiddleware | false;
+	beforeNetwork?: BeforeMiddleware | false;
+	afterNetwork?: AfterMiddleware | false;
+	after?: AfterMiddleware | false;
 }
 
 /** Configuration for an individual route. */
@@ -39,7 +40,10 @@ export interface RouteConfig {
 	cacheName: string;
 	methods: string[];
 	strategy: Strategy;
-	pathPattern: RegExp;
+	/** Absent on path-only (sub-request) routes, which never match fetches. */
+	pathPattern?: RegExp;
+	/** Sub-request path (strategyPartition) or precache URL. */
+	path?: string;
 	middlewares: Middleware[];
 	before: BeforeMiddleware[];
 	beforeNetwork: BeforeMiddleware[];
@@ -80,37 +84,38 @@ export interface ActivateConfig {
 	postMessage: (
 		message: { type: string } & Record<string, unknown>,
 	) => Promise<void>;
+	/**
+	 * Extra cache-name prefixes activate may purge, e.g. `["sw-"]` when
+	 * cachePrefix is versioned (`"sw-2-"`). Caches under any configured
+	 * cachePrefix are always eligible; all other caches are never touched.
+	 */
+	purgePrefixes: string[];
 }
 
-/** Options for partition strategies. */
+/** Options for partition strategies. Pass routes through compileConfig. */
 export interface PartitionOptions {
-	routes: PartitionRouteConfig[];
+	routes: RouteConfig[];
 	makeRequest?: (
 		request: Request,
 		config: RouteConfig,
-		routeConfig: PartitionRouteConfig,
+		routeConfig: RouteConfig,
 	) => Request;
-	strategy?: Strategy;
-}
-
-export interface PartitionRouteConfig {
-	path: string;
-	[key: string]: unknown;
+	/** Composite headers; when omitted, inherited from the first sub-response. */
+	headers?: HeadersInit;
 }
 
 // --- lib/cache.js ---
 
-/** Mutable object tracking opened caches. */
-export const openCaches: Record<string, Cache>;
-
 /**
- * Returns `response` with an Expires header computed from Cache-Control
- * max-age (or s-maxage). If neither is present, or if Expires is already set,
- * returns the response unchanged.
+ * Returns `response` with an Expires header of now + (max-age - current age),
+ * where current age is max(Age, now - Date) (RFC 9111 §4.2.3; s-maxage is
+ * ignored: a ServiceWorker cache is private). Already stale: Expires removed.
+ * max-age overrides an existing Expires; without max-age the response is
+ * returned unchanged.
  */
 export function applyExpires(response: Response): Response;
 
-/** Resolves a Response from the named cache, opening it lazily if needed. */
+/** Resolves a Response from the named cache (undefined if absent). */
 export function cacheMatch(
 	cacheKey: string,
 	request: Request,
@@ -119,16 +124,27 @@ export function cacheMatch(
 /**
  * Returns a handler that overrides cached responses via postMessage events.
  * `allowedOrigins` is required (non-empty string[]); the handler silently
- * drops any MessageEvent whose source origin isn't in the list, preventing
- * cross-origin cache poisoning.
+ * drops any MessageEvent whose source origin isn't in the list. A
+ * ServiceWorker only receives messages from same-origin clients, so this does
+ * not protect against script running on your own origin (e.g. XSS).
  */
 export function cacheOverrideEvent(
 	config: WorkBeeConfig,
 	options: { allowedOrigins: string[] },
-): (messageEvent: {
-	source?: { url?: string } | null;
-	data: { request: string | Request; response: string | Response };
-}) => Promise<void>;
+): (
+	messageEvent:
+		| ExtendableMessageEvent
+		| {
+				source?: { url?: string } | null;
+				data?: {
+					request: string | Request;
+					response: string | Response;
+					/** Headers for a string `response`, e.g. Content-Type. */
+					headers?: Record<string, string>;
+				};
+				waitUntil?: (promise: Promise<unknown>) => void;
+		  },
+) => Promise<void> | undefined;
 
 /** Puts a response into the named cache, retrying on quota errors. */
 export function cachePut(
@@ -138,7 +154,10 @@ export function cachePut(
 	retry?: number,
 ): Promise<void>;
 
-/** Returns whether the response's Expires header is in the past, or undefined if no response. */
+/**
+ * Returns whether the response's Expires header is in the past (an invalid
+ * date counts as past), or undefined if no response.
+ */
 export function cacheExpired(
 	response: Response | undefined,
 ): boolean | undefined;
@@ -149,16 +168,19 @@ export function cacheDeleteExpired(cacheKey: string): Promise<void>;
 /** Deletes expired entries from all caches. */
 export function cachesDeleteExpired(): Promise<PromiseSettledResult<void>[]>;
 
-/** Deletes all caches except those in the exclude list. */
-export function cachesDelete(exclude?: string[]): Promise<boolean[]>;
+/** Deletes caches starting with one of `prefixes` (default: all), except `exclude`. */
+export function cachesDelete(
+	exclude?: string[],
+	prefixes?: string[],
+): Promise<boolean[]>;
 
 // --- lib/config.js ---
 
 /** Converts a path pattern string to a RegExp. */
 export function pathPattern(pathPattern: string): RegExp;
 
-/** Default configuration values. */
-export const defaultConfig: WorkBeeConfig;
+/** Default configuration values (frozen, uncompiled). */
+export const defaultConfig: Readonly<UserConfig>;
 
 /**
  * User-facing input type for `compileConfig`. Only exposes fields the user is
@@ -170,7 +192,10 @@ export interface UserRouteConfig {
 	cacheName?: string;
 	methods?: string[];
 	strategy?: Strategy;
+	/** Required unless `path` is set (path-only routes never match fetches). */
 	pathPattern?: RegExp;
+	/** Sub-request path for strategyPartition routes. */
+	path?: string;
 	middlewares?: Middleware[];
 }
 
@@ -189,7 +214,7 @@ export interface UserPrecacheRouteConfig extends UserRouteConfig {
 
 export interface UserConfig extends UserRouteConfig {
 	precache?: UserPrecacheConfig;
-	activate?: ActivateConfig;
+	activate?: Partial<ActivateConfig>;
 	routes?: UserRouteConfig[];
 	skipWaiting?: boolean;
 	/** Allow unmatched requests to bypass respondWith. Default: true. */
@@ -248,8 +273,6 @@ export function eventInstall(
 	config: WorkBeeConfig,
 ): void;
 
-/** Extracts a JSON array from a response for use in precaching. */
-
 /** Handles the service worker activate event. */
 export function eventActivate(
 	event: ExtendableEvent,
@@ -265,12 +288,16 @@ export function findRouteConfig(
 	request: Request,
 ): RouteConfig;
 
-/** Fetches using a strategy with inline waitUntil processing. */
+/**
+ * Fetches using a strategy, then awaits any waitUntil work it registered.
+ * Resolves the strategy's `Response | Error`; rejects if a waitUntil promise
+ * rejects.
+ */
 export function fetchInlineStrategy(
 	request: Request,
 	event: ExtendableEvent,
 	config: RouteConfig,
-): Promise<Response>;
+): Promise<Response | Error>;
 
 /** Fetches using the configured strategy with before/after middleware. */
 export function fetchStrategy(
@@ -279,8 +306,15 @@ export function fetchStrategy(
 	config: RouteConfig,
 ): Promise<Response | Error>;
 
-/** Handles successful background fetch events. */
-export function backgroundFetchSuccessEvent(event: Event): void;
+/**
+ * Handles backgroundfetchsuccess: stores every record in the cache of the
+ * route it matches, then posts `{ stored: true }` on a BroadcastChannel named
+ * after the registration id.
+ */
+export function backgroundFetchSuccessEvent(
+	event: Event,
+	config: WorkBeeConfig,
+): void;
 
 /** Handles failed background fetch events. */
 export function backgroundFetchFailEvent(event: Event): void;
@@ -326,7 +360,7 @@ export function newResponse(
 		statusText?: string;
 		body?: BodyInit | null;
 	},
-	headersObj?: Headers | Record<string, string>,
+	headersObj?: HeadersInit,
 ): Response;
 
 /** Returns a new Response with an additional header set. */
@@ -342,13 +376,10 @@ export function deleteHeaderFromResponse(
 	key: string,
 ): Response;
 
-export const getMethod: "GET";
 export const postMethod: "POST";
 export const putMethod: "PUT";
 export const patchMethod: "PATCH";
 export const deleteMethod: "DELETE";
-export const headMethod: "HEAD";
-export const optionsMethod: "OPTIONS";
 
 export const authorizationHeader: "Authorization";
 
@@ -375,6 +406,13 @@ export const strategyNetworkOnly: Strategy;
 
 /** Cache-only strategy: only returns cached responses. */
 export const strategyCacheOnly: Strategy;
+
+/**
+ * Precache default: fetches and stores 2xx GET responses whatever their
+ * freshness (freshness is owned by the SW version). Not stored: 206,
+ * `Vary: *`, `Vary` on Authorization/Cookie, `Cache-Control: no-store`.
+ */
+export const strategyPrecache: Strategy;
 
 /** Network-first strategy: tries network, falls back to cache. */
 export const strategyNetworkFirst: Strategy;
@@ -404,5 +442,9 @@ export function strategyStatic(response: Response | Error): Strategy;
  */
 export function strategyHTMLPartition(options?: PartitionOptions): Strategy;
 
-/** Returns a partition strategy that streams multiple sub-responses. */
+/**
+ * Returns a partition strategy that streams multiple sub-responses. Without
+ * `options.headers` the composite takes the first sub-response's headers,
+ * status and statusText; with them it is a 200.
+ */
 export function strategyPartition(options?: PartitionOptions): Strategy;

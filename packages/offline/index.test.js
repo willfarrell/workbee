@@ -121,6 +121,27 @@ test("idbSerializeRequest: serializes a GET request with no body", async () => {
 	strictEqual(serialized.body, null);
 });
 
+test("idbSerializeRequest: reads the body even when Request.body is unimplemented (Firefox)", async () => {
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		body: "payload",
+	});
+	Object.defineProperty(request, "body", { get: () => undefined });
+
+	const serialized = await idbSerializeRequest(request);
+
+	strictEqual(serialized.body?.data, "payload");
+});
+
+test("idbSerializeRequest: GET and HEAD store no body even when Request.body is unimplemented", async () => {
+	for (const method of ["GET", "HEAD"]) {
+		const request = new Request(`${domain}/200`, { method });
+		Object.defineProperty(request, "body", { get: () => undefined });
+
+		strictEqual((await idbSerializeRequest(request)).body, null, method);
+	}
+});
+
 // *** idbDeserializeRequest *** //
 
 test("idbDeserializeRequest: creates a Request from serialized data", () => {
@@ -976,11 +997,11 @@ test("afterNetwork: handles idbObjectStore.add error including QuotaExceededErro
 		headers: { "Content-Type": "application/json" },
 	});
 	const response2 = new Response("", { status: 503 });
-	const waitUntils2 = [];
-	const event2 = { waitUntil: (p) => waitUntils2.push(p) };
-	await afterNetwork(request2, response2, event2, {});
-	await Promise.all(waitUntils2);
+	const event2 = { waitUntil: (p) => p.catch(() => {}) };
+	const result2 = await afterNetwork(request2, response2, event2, {});
 
+	// Nothing was stored, so the page must not be told 202 Accepted.
+	strictEqual(result2, response2);
 	// Should have posted quota-exceeded message
 	const quotaCalls = postMessageSpy.mock.calls.filter(
 		(c) => c.arguments[0]?.type === "quota-exceeded",
@@ -1494,10 +1515,8 @@ test("afterNetwork: does not post enqueue event when IDB add fails (quota)", asy
 		headers: { "Content-Type": "application/json" },
 	});
 	const response = new Response("", { status: 503 });
-	const waitUntils = [];
-	const event = { waitUntil: (p) => waitUntils.push(p) };
+	const event = { waitUntil: (p) => p.catch(() => {}) };
 	await afterNetwork(request, response, event, {});
-	await Promise.all(waitUntils);
 
 	// The write failed, so NO enqueue event must have been posted — only the
 	// quota-exceeded notification.
@@ -1621,14 +1640,14 @@ test("afterNetwork: non-queued method (GET) returns original 503 response and do
 	destroy();
 });
 
-// *** poll timer scheduling: default delay + head-gated timeout (lines 34, 61-62, 172) ***
+// *** poll timer scheduling: default delay + one pending poll at a time ***
 // `timeout()` schedules `setTimeout(postMessageEvent, pollDelay)`. With the
-// default pollDelay (option omitted) the delay must be exactly 60000ms, and the
-// timer is armed ONLY when the first item is enqueued into an empty queue
-// (`if (!head)`), not on subsequent enqueues. We wrap the real setTimeout so the
+// default pollDelay (option omitted) the delay must be exactly 60000ms, and an
+// enqueue arms the timer only when no poll is already pending
+// (`timer ??=`). We wrap the real setTimeout so the
 // timer still fires through to fake-indexeddb, and match on the middleware's own
 // postMessageEvent reference to ignore unrelated internal timers.
-test("enqueue: arms poll timer with default 60000ms delay only on the first (empty-queue) enqueue", async () => {
+test("enqueue: arms poll timer with default 60000ms delay only when no poll is pending", async () => {
 	globalThis.indexedDB = new IDBFactory();
 	// pollDelay omitted entirely -> exercises the `??= 1 * 60 * 1000` default.
 	const offline = offlineMiddleware({});
@@ -1651,7 +1670,7 @@ test("enqueue: arms poll timer with default 60000ms delay only on the first (emp
 		timerCalls.filter((c) => c.fn === postMessageEvent);
 
 	try {
-		// First enqueue into an EMPTY queue -> head is null -> timeout() runs.
+		// First enqueue -> no poll pending -> timeout() arms one.
 		const req1 = new Request(`${domain}/503`, {
 			method: "POST",
 			body: JSON.stringify({ n: 1 }),
@@ -1668,11 +1687,10 @@ test("enqueue: arms poll timer with default 60000ms delay only on the first (emp
 		//  - pollDelay arithmetic mutants (16.67 / 0.06 instead of 60000)
 		//  - pollDelay `&&=` mutant (default never assigned -> undefined -> no timer)
 		//  - `if (pollDelay > 0)` -> false and the timeout block removal (no timer)
-		//  - `if (!head)` -> if(head)/false and its block removal (no timer)
 		strictEqual(afterFirst.length, 1);
 		strictEqual(afterFirst[0].delay, 60000);
 
-		// Second enqueue of a DIFFERENT request -> head now exists -> NO new timer.
+		// Second enqueue of a DIFFERENT request -> poll already pending -> NO new timer.
 		const req2 = new Request(`${domain}/503`, {
 			method: "POST",
 			body: JSON.stringify({ n: 2 }),
@@ -1684,8 +1702,8 @@ test("enqueue: arms poll timer with default 60000ms delay only on the first (emp
 		});
 		await Promise.all(w2);
 
-		// Still exactly one. Kills `if (!head)` -> if(true), which would re-arm the
-		// timer on every enqueue regardless of queue state.
+		// Still exactly one. Kills `timer ??=` -> `timer =`, which would arm a
+		// second timer on every enqueue.
 		strictEqual(pollTimerCalls().length, 1);
 	} finally {
 		globalThis.setTimeout = origSetTimeout;
@@ -1938,10 +1956,8 @@ test("afterNetwork: a non-quota IDB add error does not post the quota-exceeded m
 		body: JSON.stringify({ data: "generic-error" }),
 		headers: { "Content-Type": "application/json" },
 	});
-	const waitUntils = [];
-	const event = { waitUntil: (p) => waitUntils.push(p) };
+	const event = { waitUntil: (p) => p.catch(() => {}) };
 	await afterNetwork(request, new Response("", { status: 503 }), event, {});
-	await Promise.all(waitUntils);
 
 	// Real code: name !== "QuotaExceededError" -> no quota message at all.
 	const quotaCalls = postMessageSpy.mock.calls.filter(
@@ -2222,6 +2238,7 @@ test("idbSerializeRequest: omits properties that are undefined on the input", as
 	const serialized = await idbSerializeRequest({
 		method: "POST",
 		url: `${domain}/200`,
+		body: null,
 	});
 
 	strictEqual(serialized.method, "POST");
@@ -2302,4 +2319,349 @@ test("idbDeserializeRequest: a text-encoded envelope yields the data string", as
 		body: { encoding: "text", data: "hello-text" },
 	});
 	strictEqual(await request.text(), "hello-text");
+});
+
+// *** A queued request that cannot be rebuilt must not wedge the queue *** //
+test("postMessageEvent: evicts a queued request that cannot be rebuilt and drains the next", async (t) => {
+	t.mock.method(console, "error", () => {});
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		dequeueEventType: "dequeue",
+		failedEventType: "failed",
+		postMessage: postMessageSpy,
+	});
+
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	// A request-like entry whose serialized form `new Request()` rejects.
+	await afterNetwork(
+		{
+			method: "POST",
+			url: "http://[invalid",
+			headers: new Headers(),
+			body: null,
+		},
+		undefined,
+		event,
+		{},
+	);
+	await afterNetwork(
+		new Request(`${domain}/200`, { method: "POST", body: "ok" }),
+		undefined,
+		event,
+		{},
+	);
+	await Promise.all(waitUntils);
+	strictEqual(await countStore(), 2);
+
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+	await postMessageEvent();
+
+	strictEqual(await countStore(), 0);
+	const failedCalls = postMessageSpy.mock.calls.filter(
+		(c) => c.arguments[0].type === "failed",
+	);
+	strictEqual(failedCalls.length, 1);
+	strictEqual(failedCalls[0].arguments[0].url, "http://[invalid");
+	const dequeueCalls = postMessageSpy.mock.calls.filter(
+		(c) => c.arguments[0].type === "dequeue",
+	);
+	strictEqual(dequeueCalls.length, 1);
+	strictEqual(dequeueCalls[0].arguments[0].url, `${domain}/200`);
+	destroy();
+});
+
+test("postMessageEvent: evicts an unbuildable request even when failedEventType is unset", async (t) => {
+	t.mock.method(console, "error", () => {});
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		postMessage: postMessageSpy,
+	});
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(
+		{
+			method: "POST",
+			url: "http://[invalid",
+			headers: new Headers(),
+			body: null,
+		},
+		undefined,
+		event,
+		{},
+	);
+	await Promise.all(waitUntils);
+
+	await postMessageEvent();
+
+	strictEqual(await countStore(), 0);
+	strictEqual(postMessageSpy.mock.callCount(), 0);
+	destroy();
+});
+
+// *** Navigation (HTML form POST) requests carry mode "navigate" *** //
+test("idbSerializeRequest: stores a navigate-mode request as same-origin", async () => {
+	const serialized = await idbSerializeRequest({
+		method: "POST",
+		url: `${domain}/200`,
+		mode: "navigate",
+		headers: new Headers(),
+		body: null,
+	});
+
+	strictEqual(serialized.mode, "same-origin");
+});
+
+test("idbDeserializeRequest: rebuilds a stored navigate-mode entry as same-origin", async () => {
+	// Entries queued before the serialize fix may still carry mode "navigate",
+	// which the Request constructor rejects.
+	const request = idbDeserializeRequest({
+		method: "POST",
+		url: `${domain}/200`,
+		mode: "navigate",
+		headers: {},
+		body: null,
+	});
+
+	strictEqual(request.mode, "same-origin");
+});
+
+test("postMessageEvent: replays a queued navigate-mode form POST", async () => {
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 0,
+		dequeueEventType: "dequeue",
+		postMessage: postMessageSpy,
+	});
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await afterNetwork(
+		{
+			method: "POST",
+			url: `${domain}/200`,
+			mode: "navigate",
+			headers: new Headers(),
+			body: null,
+		},
+		undefined,
+		event,
+		{},
+	);
+	await Promise.all(waitUntils);
+
+	await postMessageEvent();
+
+	strictEqual(await countStore(), 0);
+	strictEqual(postMessageSpy.mock.calls[0].arguments[0].type, "dequeue");
+	destroy();
+});
+
+// *** Separate queues (objectStoreName) must each get a working store *** //
+const enqueueOnce = async (offline, path) => {
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	await offline.afterNetwork(
+		new Request(`${domain}${path}`, { method: "POST", body: path }),
+		undefined,
+		event,
+		{},
+	);
+	await Promise.all(waitUntils);
+};
+
+test("offlineMiddleware: two instances with different objectStoreName can both enqueue", async (t) => {
+	t.mock.method(console, "error", () => {});
+	globalThis.indexedDB = new IDBFactory();
+	const postMessageA = mock.fn();
+	const postMessageB = mock.fn();
+	const a = offlineMiddleware({
+		pollDelay: 0,
+		objectStoreName: "queue-a",
+		enqueueEventType: "enqueue",
+		postMessage: postMessageA,
+	});
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	const b = offlineMiddleware({
+		pollDelay: 0,
+		objectStoreName: "queue-b",
+		enqueueEventType: "enqueue",
+		postMessage: postMessageB,
+	});
+	await new Promise((resolve) => setTimeout(resolve, 50));
+
+	await enqueueOnce(a, "/a");
+	await enqueueOnce(b, "/b");
+
+	strictEqual(postMessageA.mock.callCount(), 1);
+	strictEqual(postMessageB.mock.callCount(), 1);
+	a.destroy();
+	b.destroy();
+});
+
+test("offlineMiddleware: a store missing from an explicitly shared database fails with a clear error", async (t) => {
+	const consoleErrorSpy = t.mock.method(console, "error", () => {});
+	globalThis.indexedDB = new IDBFactory();
+	const a = offlineMiddleware({
+		pollDelay: 0,
+		databaseName: "shared",
+		objectStoreName: "queue-a",
+	});
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	const b = offlineMiddleware({
+		pollDelay: 0,
+		databaseName: "shared",
+		objectStoreName: "queue-b",
+	});
+	await new Promise((resolve) => setTimeout(resolve, 50));
+
+	await enqueueOnce(a, "/a");
+	let error;
+	try {
+		await enqueueOnce(b, "/b");
+	} catch (e) {
+		error = e;
+	}
+
+	ok(/queue-b.*shared.*databaseName/.test(error?.message), error?.message);
+	strictEqual(consoleErrorSpy.mock.calls[0].arguments[0], error);
+	a.destroy();
+	b.destroy();
+});
+
+test("postMessageEvent: polling stops once the queue is drained, continues while it is not", async (t) => {
+	// Re-arming on an empty queue would wake the worker every pollDelay forever.
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		pollDelay: 60000,
+	});
+	t.after(destroy);
+	const setTimeoutSpy = t.mock.method(globalThis, "setTimeout");
+
+	await postMessageEvent();
+	strictEqual(setTimeoutSpy.mock.callCount(), 0);
+
+	const waitUntils = [];
+	await afterNetwork(
+		new Request(`${domain}/503`, { method: "POST", body: "data" }),
+		new Response("", { status: 503 }),
+		{ waitUntil: (p) => waitUntils.push(p) },
+		{},
+	);
+	await Promise.all(waitUntils);
+	setTimeoutSpy.mock.resetCalls();
+
+	// Replay still gets a retryable 503, so the entry stays and polling re-arms.
+	await postMessageEvent();
+	strictEqual(setTimeoutSpy.mock.callCount(), 1);
+});
+
+test("offlineMiddleware: a queue persisted before the worker restarted drains without a new enqueue", async (t) => {
+	// A restarted worker that is already online never sees an `online` event.
+	Object.defineProperty(navigator, "onLine", {
+		value: true,
+		writable: true,
+		configurable: true,
+	});
+	const before = await createOffline({ pollDelay: 0 });
+	const waitUntils = [];
+	await before.afterNetwork(
+		new Request(`${domain}/200`, { method: "POST", body: "data" }),
+		new Response("", { status: 503 }),
+		{ waitUntil: (p) => waitUntils.push(p) },
+		{},
+	);
+	await Promise.all(waitUntils);
+	before.destroy();
+	strictEqual(await countStore(), 1);
+
+	// Same IndexedDB, new worker instance.
+	const after = offlineMiddleware({ pollDelay: 10 });
+	t.after(after.destroy);
+	await new Promise((resolve) => setTimeout(resolve, 100));
+
+	strictEqual(await countStore(), 0);
+});
+
+test("afterNetwork: returns the original response, not 202, when IndexedDB cannot open", async (t) => {
+	t.mock.method(console, "error", () => {});
+	const originalIndexedDB = globalThis.indexedDB;
+	t.after(() => {
+		globalThis.indexedDB = originalIndexedDB;
+	});
+	globalThis.indexedDB = {
+		open: () => {
+			const openRequest = {};
+			setTimeout(() => openRequest.onerror(new Error("idb broken")), 0);
+			return openRequest;
+		},
+	};
+	const { afterNetwork, destroy } = offlineMiddleware({ pollDelay: 0 });
+	t.after(destroy);
+	await new Promise((resolve) => setTimeout(resolve, 10));
+
+	const response = new Response("", { status: 503 });
+	const result = await afterNetwork(
+		new Request(`${domain}/503`, { method: "POST", body: "data" }),
+		response,
+		{ waitUntil: (p) => p.catch(() => {}) },
+		{},
+	);
+
+	strictEqual(result, response);
+});
+
+test("postMessageEvent: a replayed form POST answered with a redirect (opaqueredirect) is dequeued", async (t) => {
+	// Queued navigations keep redirect "manual", so a 303 replays as status 0.
+	const postMessageSpy = mock.fn();
+	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
+		dequeueEventType: "dequeue",
+		failedEventType: "failed",
+		postMessage: postMessageSpy,
+	});
+	t.after(destroy);
+	const waitUntils = [];
+	await afterNetwork(
+		new Request(`${domain}/200`, { method: "POST", body: "form" }),
+		undefined,
+		{ waitUntil: (p) => waitUntils.push(p) },
+		{},
+	);
+	await Promise.all(waitUntils);
+	t.mock.method(globalThis, "fetch", async () => ({
+		type: "opaqueredirect",
+		status: 0,
+		ok: false,
+	}));
+
+	await postMessageEvent();
+
+	strictEqual(await countStore(), 0);
+	strictEqual(postMessageSpy.mock.calls[0].arguments[0].type, "dequeue");
+});
+
+test("clear: drops every queued request and the pending poll (call on logout)", async (t) => {
+	const { afterNetwork, clear, destroy } = await createOffline({
+		pollDelay: 60000,
+	});
+	t.after(destroy);
+	const waitUntils = [];
+	await afterNetwork(
+		new Request(`${domain}/503`, { method: "POST", body: "user A" }),
+		undefined,
+		{ waitUntil: (p) => waitUntils.push(p) },
+		{},
+	);
+	await Promise.all(waitUntils);
+	const clearTimeoutSpy = t.mock.method(globalThis, "clearTimeout");
+
+	await clear();
+
+	strictEqual(await countStore(), 0);
+	strictEqual(clearTimeoutSpy.mock.callCount(), 1);
+	notStrictEqual(clearTimeoutSpy.mock.calls[0].arguments[0], undefined);
 });

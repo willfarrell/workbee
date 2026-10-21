@@ -1,11 +1,22 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
+/* global caches */
 import {
 	fetchInlineStrategy,
 	isResponse,
 	newRequest,
-	strategyCacheFirst,
+	strategyNetworkOnly,
 } from "@work-bee/core";
+
+// The fallback asset is usually precached under a different cacheName than the
+// failing route, so look it up across every cache before going to the network.
+const strategyFallback = async (request, event, config) => {
+	const response = await caches.match(request);
+	if (isResponse(response)) {
+		return response;
+	}
+	return strategyNetworkOnly(request, event, config);
+};
 
 const fallbackMiddleware = ({
 	pathPattern,
@@ -41,7 +52,11 @@ const fallbackMiddleware = ({
 			event,
 			{
 				...config,
-				strategy: fallbackStrategy ?? strategyCacheFirst,
+				// Drop this hook from the nested run: if the fallback asset fails
+				// too (offline and not cached) it would otherwise re-enter here and
+				// recurse without bound.
+				after: config.after.filter((hook) => hook !== after),
+				strategy: fallbackStrategy ?? strategyFallback,
 			},
 		);
 	};

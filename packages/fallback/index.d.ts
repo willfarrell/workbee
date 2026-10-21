@@ -16,7 +16,7 @@ interface FallbackMiddlewareResult {
 }
 
 declare function fallbackMiddleware(
-	opts?: FallbackOptions,
+	opts: FallbackOptions,
 ): FallbackMiddlewareResult;
 
 export default fallbackMiddleware;

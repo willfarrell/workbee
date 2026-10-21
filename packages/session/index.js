@@ -16,6 +16,7 @@
 import {
 	addHeaderToRequest,
 	authorizationHeader,
+	consoleError,
 	deleteHeaderFromResponse,
 	isResponse,
 	postMessageToFocused,
@@ -49,127 +50,162 @@ const sessionMiddleware = ({
 	const inactivityTimeoutBuffer = 60 * 1000;
 
 	let sessionToken = "";
-	let sessionCaches = {};
-	let sessionExpiresInMilliseconds = 0;
+	const sessionCaches = new Set();
+	const purgedCaches = {};
+	let sessionExpiresAt = 0;
 	let recentActivityTimestamp = 0;
 
 	let before, afterNetwork, after;
 
 	const swOrigin = globalThis.self?.location?.origin;
+	// Fail closed: if no allow-list could be resolved (neither
+	// `authzAllowedOrigins` nor a derivable SW origin), never attach the token.
+	// A real ServiceWorker always resolves `self.location.origin`, so this only
+	// denies in degenerate environments where the origin is unknowable.
 	const allowedOrigins =
 		Array.isArray(authzAllowedOrigins) && authzAllowedOrigins.length
 			? authzAllowedOrigins
 			: swOrigin
 				? [swOrigin]
-				: null;
-	const isAllowedOrigin = (url) => {
-		// Fail closed: if no allow-list could be resolved (neither
-		// `authzAllowedOrigins` nor a derivable SW origin), never attach the token.
-		// A real ServiceWorker always resolves `self.location.origin`, so this only
-		// denies in degenerate environments where the origin is unknowable.
-		if (!allowedOrigins) return false;
-		// `URL.parse` returns null instead of throwing, so one call both
-		// validates and parses — `canParse` + `new URL()` would parse the url
-		// twice on every authorized request, and a try/catch's empty body would
-		// be an equivalent mutant (undefined and false are both falsy).
-		const parsed = URL.parse(url);
-		if (!parsed) return false;
-		return allowedOrigins.includes(parsed.origin);
+				: // Stryker disable next-line ArrayDeclaration: a seeded non-origin
+					// string can never equal a parsed URL origin, so it denies too.
+					[];
+	// Logins may also come from the SW's own origin, even when an explicit
+	// allow-list replaces it for authz.
+	// Stryker disable next-line ArrayDeclaration: a seeded non-origin string can
+	// never equal a parsed URL origin, so it allow-lists nothing extra.
+	const authnOrigins = allowedOrigins.concat(swOrigin ?? []);
+	const isAllowedOrigin = (url, origins = allowedOrigins) => {
+		// try/catch rather than `URL.parse`/`URL.canParse`, which need Chrome /
+		// Firefox 126 and Safari 18.
+		let origin;
+		try {
+			origin = new URL(url).origin;
+		} catch {
+			// Unparseable: `origin` stays undefined and is never allow-listed.
+		}
+		return origins.includes(origin);
+	};
+
+	// Deletes only authz entries, so routes sharing the cacheName keep theirs.
+	// `has` first: `open` would create an empty cache just to find nothing.
+	const purgeAuthzEntries = async (cacheKey) => {
+		if (!(await caches.has(cacheKey))) return;
+		const cache = await caches.open(cacheKey);
+		const requests = await cache.keys();
+		await Promise.all(
+			requests
+				.filter((request) => authzPathPattern.test(request.url))
+				.map((request) => cache.delete(request)),
+		);
 	};
 
 	if (authzPathPattern) {
-		before = (request, _event, _config) => {
-			if (
-				sessionToken &&
-				authzPathPattern.test(request.url) &&
-				isAllowedOrigin(request.url)
-			) {
+		before = async (request, _event, config) => {
+			if (!authzPathPattern.test(request.url)) {
+				return request;
+			}
+			if (!sessionToken) {
+				// The token lives only in memory, so a restarted SW has none, but
+				// the caches survive: responses cached for the previous session
+				// must not be served (nor outlive a logout this SW never saw).
+				// Purge once per cacheKey; later caching is tracked for logout.
+				purgedCaches[config.cacheKey] ??= purgeAuthzEntries(config.cacheKey);
+				await purgedCaches[config.cacheKey];
+			} else if (isAllowedOrigin(request.url)) {
 				request = authzSetToken(request, sessionToken);
 			}
 			return request;
 		};
 		after = (request, response, _event, config) => {
 			activityEvent();
-			if (authzPathPattern.test(request.url)) {
-				// Stryker disable next-line BooleanLiteral: only Object.keys(sessionCaches) is ever read (in clearSession); the stored value (true vs false) is never inspected for truthiness, and the property/key is created either way, so caches.delete iterates the identical key set — no observable behavior changes.
-				sessionCaches[config.cacheKey] ??= true;
-			}
+			// Every cache this route writes; logout purges only its authz entries.
+			sessionCaches.add(config.cacheKey);
 			return response;
 		};
 	}
 
 	if (authnPathPattern || unauthnPathPattern) {
 		afterNetwork = async (request, response, _event, _config) => {
-			if (isResponse(response)) {
-				if (
-					authnPathPattern &&
-					authnMethods.includes(request.method) &&
-					authnPathPattern.test(request.url)
-				) {
-					const token = await authnGetToken(response.clone());
-					// Only establish a session when a token was actually extracted.
-					// A missing/empty token (e.g. the response carried no
-					// Authorization header) must not arm the expiry/inactivity timers
-					// or store an `undefined` token.
-					if (token) {
-						const expiry = await authnGetExpiry(response.clone(), token);
-						sessionToken = token;
-						sessionExpiresInMilliseconds = expiry;
-						inactivityTimer();
-						sessionTimer();
-					}
-					// Always strip Authorization so the token never reaches the page.
-					response = deleteHeaderFromResponse(response, authorizationHeader);
-				} else if (unauthnPathPattern?.test(request.url)) {
-					clearSession();
+			if (
+				isResponse(response) &&
+				authnPathPattern &&
+				authnMethods.includes(request.method) &&
+				authnPathPattern.test(request.url) &&
+				// A token from any other origin could fixate a foreign session.
+				isAllowedOrigin(request.url, authnOrigins)
+			) {
+				const token = await authnGetToken(response.clone());
+				// Only establish a session when a token was actually extracted.
+				// A missing/empty token (e.g. the response carried no
+				// Authorization header) must not arm the expiry/inactivity timers
+				// or store an `undefined` token.
+				if (token) {
+					const expiry = await authnGetExpiry(response.clone(), token);
+					sessionToken = token;
+					sessionExpiresAt = now() + expiry;
+					inactivityTimer();
+					sessionTimer();
 				}
+				// Always strip Authorization so the token never reaches the page.
+				response = deleteHeaderFromResponse(response, authorizationHeader);
+			} else if (unauthnPathPattern?.test(request.url)) {
+				// Any outcome, network errors included: a logout the server never
+				// saw must still stop the token being attached.
+				clearSession();
 			}
 			return response;
 		};
 	}
 
-	let inactivityTimeout;
+	// setTimeout overflows above 2^31-1 ms (~24.8 days) and fires at once, so a
+	// far deadline waits in max-length steps until it is in range.
+	const timeouts = {};
+	const setTimeoutAt = (name, deadline, callback) => {
+		clearTimeout(timeouts[name]);
+		const delay = deadline - now();
+		timeouts[name] =
+			// Stryker disable next-line EqualityOperator: at delay === maxTimeout,
+			// re-arming after maxTimeout and firing after delay are the same moment.
+			delay > maxTimeout
+				? setTimeout(() => setTimeoutAt(name, deadline, callback), maxTimeout)
+				: setTimeout(callback, Math.max(0, delay));
+	};
+
+	// Due 60 sec before the session expires, then held back until 60 sec have
+	// passed without activity. Never fires after the session has ended.
 	const inactivityTimer = () => {
-		clearTimeout(inactivityTimeout);
-		// 60 sec for time before expire to notify
-		inactivityTimeout = setTimeout(
-			expiryPromptEvent,
+		setTimeoutAt(
+			"inactivity",
 			Math.max(
-				0,
-				recentActivityTimestamp +
-					sessionExpiresInMilliseconds -
-					inactivityTimeoutBuffer -
-					now(),
+				sessionExpiresAt - inactivityTimeoutBuffer,
+				recentActivityTimestamp + inactivityTimeoutBuffer,
 			),
+			expiryPromptEvent,
 		);
 	};
-	let sessionTimeout;
 	const sessionTimer = () => {
-		clearTimeout(sessionTimeout);
-		sessionTimeout = setTimeout(async () => {
+		setTimeoutAt("session", sessionExpiresAt, () => {
 			clearSession();
 			if (expiryEventType) {
 				postMessage({ type: expiryEventType });
 			}
-		}, sessionExpiresInMilliseconds);
+		});
 	};
 
 	const clearSession = () => {
 		sessionToken = "";
-		for (const cacheFullName of Object.keys(sessionCaches)) {
-			caches.delete(cacheFullName);
+		for (const cacheKey of sessionCaches) {
+			purgeAuthzEntries(cacheKey).catch(consoleError);
 		}
-		sessionCaches = {};
-		clearTimeout(inactivityTimeout);
-		clearTimeout(sessionTimeout);
+		sessionCaches.clear();
+		clearTimeout(timeouts.inactivity);
+		clearTimeout(timeouts.session);
 	};
 
 	// sw -> Page
 	const expiryPromptEvent = () => {
-		if (
-			recentActivityTimestamp <=
-			now() - sessionExpiresInMilliseconds + inactivityTimeoutBuffer
-		) {
+		if (recentActivityTimestamp <= now() - inactivityTimeoutBuffer) {
 			if (inactivityPromptEventType) {
 				postMessage({ type: inactivityPromptEventType });
 			}
@@ -182,8 +218,6 @@ const sessionMiddleware = ({
 	const activityEvent = () => {
 		recentActivityTimestamp = now();
 	};
-	// Seed initial timestamp so inactivity timer has a baseline
-	activityEvent();
 
 	const destroy = () => {
 		clearSession();
@@ -193,6 +227,7 @@ const sessionMiddleware = ({
 };
 
 const now = () => Date.now();
+const maxTimeout = 2 ** 31 - 1;
 
 export const getTokenAuthorization = (response) => {
 	// Authorization Bearer <token>

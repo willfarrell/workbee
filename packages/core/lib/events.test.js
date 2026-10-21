@@ -1,8 +1,8 @@
 /* global Request Response Headers */
 
-import { deepEqual, equal, rejects, strictEqual } from "node:assert";
+import { deepEqual, equal, match, rejects, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
-import "../../../fixtures/helper.js";
+import { cacheStore } from "../../../fixtures/helper.js";
 import {
 	backgroundFetchFailEvent,
 	backgroundFetchSuccessEvent,
@@ -15,7 +15,6 @@ import {
 	fetchInlineStrategy,
 	fetchStrategy,
 	findRouteConfig,
-	openCaches,
 	pathPattern,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
@@ -69,6 +68,24 @@ test("events", async (t) => {
 			});
 			const result = findRouteConfig(config, request);
 			equal(result, config);
+		},
+	);
+
+	await t.test(
+		"findRouteConfig: a global/sticky pathPattern matches on every call",
+		async () => {
+			// RegExp#test on a g/y pattern advances lastIndex, so a shared route
+			// regex would alternate hit and miss.
+			for (const pattern of [/\/api\//g, /http/y]) {
+				const config = compileConfig({
+					middlewares: [],
+					routes: [{ pathPattern: pattern, cacheName: "api" }],
+				});
+				const request = new Request("http://localhost:8080/api/users");
+				for (let i = 0; i < 3; i++) {
+					equal(findRouteConfig(config, request).cacheName, "api", `${i}`);
+				}
+			}
 		},
 	);
 
@@ -367,7 +384,7 @@ test("events", async (t) => {
 		globalThis.skipWaiting = mock.fn();
 
 		const putFn = mock.fn();
-		openCaches["sw-default"] = { put: putFn, match: () => undefined };
+		cacheStore["sw-default"] = { put: putFn, match: () => undefined };
 
 		const config = compileConfig({
 			middlewares: [],
@@ -386,9 +403,80 @@ test("events", async (t) => {
 		equal(putFn.mock.callCount(), 1);
 		equal(putFn.mock.calls[0].arguments[0], "http://localhost:8080/200");
 
-		delete openCaches["sw-default"];
+		delete cacheStore["sw-default"];
 		globalThis.skipWaiting = originalSkipWaiting;
 	});
+
+	await t.test(
+		"eventInstall: precaches assets regardless of their HTTP freshness",
+		async (tt) => {
+			// Precache freshness is owned by the SW version (cachePrefix), not by
+			// Cache-Control: an offline page served with no max-age must still land.
+			tt.mock.method(globalThis, "fetch", async () => new Response("offline"));
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+			tt.after(() => {
+				globalThis.skipWaiting = originalSkipWaiting;
+			});
+			const waitUntilFn = mock.fn();
+			const config = compileConfig({
+				cacheName: "precache-fresh",
+				precache: { routes: ["http://localhost:8080/offline.html"] },
+			});
+
+			eventInstall({ waitUntil: waitUntilFn }, config);
+			await waitUntilFn.mock.calls[0].arguments[0];
+
+			const cached = await caches.match(
+				new Request("http://localhost:8080/offline.html"),
+				{ cacheName: "sw-precache-fresh" },
+			);
+			equal(await cached?.text(), "offline");
+			await caches.delete("sw-precache-fresh");
+		},
+	);
+
+	await t.test(
+		"eventInstall: fails install and caches nothing when a precache entry fails",
+		async (tt) => {
+			// A resolving install would let activate purge the previous version's
+			// caches while this version is missing assets.
+			const fetchMock = tt.mock.method(
+				globalThis,
+				"fetch",
+				async () => new Response("missing", { status: 404 }),
+			);
+			const originalSkipWaiting = globalThis.skipWaiting;
+			globalThis.skipWaiting = mock.fn();
+			tt.after(() => {
+				globalThis.skipWaiting = originalSkipWaiting;
+			});
+			const waitUntilFn = mock.fn();
+			const config = compileConfig({
+				cacheName: "precache-404",
+				precache: { routes: ["http://localhost:8080/missing.html"] },
+			});
+
+			eventInstall({ waitUntil: waitUntilFn }, config);
+			await rejects(waitUntilFn.mock.calls[0].arguments[0], (e) => {
+				match(e.message, /precache: .*missing\.html.*404/);
+				strictEqual(e.cause.status, 404);
+				return true;
+			});
+
+			// A network failure (Error, not Response) fails install too.
+			fetchMock.mock.mockImplementation(async () => {
+				throw new Error("offline");
+			});
+			eventInstall({ waitUntil: waitUntilFn }, config);
+			await rejects(waitUntilFn.mock.calls[1].arguments[0]);
+
+			deepEqual(
+				await caches.keys().then((k) => k.includes("sw-precache-404")),
+				false,
+			);
+		},
+	);
 
 	await t.test(
 		"eventInstall: string routes without `extract` fails with an actionable error",
@@ -433,7 +521,7 @@ test("events", async (t) => {
 			globalThis.skipWaiting = mock.fn();
 
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn, match: () => undefined };
+			cacheStore["sw-default"] = { put: putFn, match: () => undefined };
 
 			// compileConfig doesn't support string routes, so compile first then override
 			const config = compileConfig({
@@ -480,7 +568,7 @@ test("events", async (t) => {
 			globalThis.skipWaiting = mock.fn();
 
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn, match: () => undefined };
+			cacheStore["sw-default"] = { put: putFn, match: () => undefined };
 
 			const config = compileConfig({
 				middlewares: [],
@@ -735,6 +823,152 @@ test("events", async (t) => {
 		},
 	);
 
+	await t.test(
+		"eventActivate: only purges caches carrying a configured cachePrefix",
+		async () => {
+			// CacheStorage is shared by the whole origin: page code and service
+			// workers on other scopes own caches too. Activate may only reap caches
+			// that workbee itself could have created.
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+
+			const originalClients = globalThis.clients;
+			globalThis.clients = {
+				...globalThis.clients,
+				claim: mock.fn(() => Promise.resolve()),
+			};
+			for (const key of [
+				"sw-default",
+				"sw-old",
+				"v2-api",
+				"v1-api",
+				"app-owned-data",
+				"other-scope-sw",
+			]) {
+				await caches.open(key);
+			}
+
+			const config = compileConfig({
+				routes: [
+					{
+						pathPattern: pathPattern("/api/.*$"),
+						cachePrefix: "v2-",
+						cacheName: "api",
+					},
+				],
+			});
+
+			eventActivate(event, config);
+			await Promise.all(waitUntilFn.mock.calls.map((c) => c.arguments[0]));
+
+			deepEqual((await caches.keys()).sort(), [
+				"app-owned-data",
+				"other-scope-sw",
+				"sw-default",
+				"v1-api",
+				"v2-api",
+			]);
+
+			for (const key of await caches.keys()) await caches.delete(key);
+			globalThis.clients = originalClients;
+		},
+	);
+
+	await t.test(
+		"eventActivate: keeps caches used by strategyPartition sub-routes",
+		async (tt) => {
+			const { strategyHTMLPartition } = await import("../index.js");
+			const waitUntilFn = mock.fn();
+			const originalClients = globalThis.clients;
+			globalThis.clients = { claim: mock.fn(() => Promise.resolve()) };
+			tt.after(async () => {
+				globalThis.clients = originalClients;
+				for (const key of await caches.keys()) await caches.delete(key);
+			});
+			for (const key of ["sw-fragments", "sw-shell", "sw-orphan"]) {
+				await caches.open(key);
+			}
+
+			const config = compileConfig({
+				// top-level strategy and a route strategy are both partitions
+				strategy: strategyHTMLPartition(
+					compileConfig({ cacheName: "shell", routes: [{ path: "$1/s" }] }),
+				),
+				routes: [
+					{
+						pathPattern: pathPattern("/page/.*$"),
+						strategy: strategyHTMLPartition(
+							compileConfig({
+								cacheName: "fragments",
+								routes: [{ path: "$1/header" }],
+							}),
+						),
+					},
+				],
+			});
+
+			eventActivate({ waitUntil: waitUntilFn }, config);
+			await Promise.all(waitUntilFn.mock.calls.map((c) => c.arguments[0]));
+
+			deepEqual((await caches.keys()).sort(), ["sw-fragments", "sw-shell"]);
+		},
+	);
+
+	await t.test(
+		"eventActivate: activate.purgePrefixes reaps previous-version caches",
+		async () => {
+			// Versioned prefixes (`sw-2-`) can't be derived from the old version, so
+			// the stable part is opted in explicitly.
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+			const originalClients = globalThis.clients;
+			globalThis.clients = {
+				...globalThis.clients,
+				claim: mock.fn(() => Promise.resolve()),
+			};
+			for (const key of ["sw-1-default", "sw-2-default", "app-owned-data"]) {
+				await caches.open(key);
+			}
+
+			const config = compileConfig({
+				cachePrefix: "sw-2-",
+				activate: { purgePrefixes: ["sw-"] },
+			});
+
+			eventActivate(event, config);
+			await Promise.all(waitUntilFn.mock.calls.map((c) => c.arguments[0]));
+
+			deepEqual((await caches.keys()).sort(), [
+				"app-owned-data",
+				"sw-2-default",
+			]);
+
+			for (const key of await caches.keys()) await caches.delete(key);
+			globalThis.clients = originalClients;
+		},
+	);
+
+	await t.test(
+		"eventActivate: a partial activate config keeps the default postMessage",
+		async () => {
+			const waitUntilFn = mock.fn();
+			const event = { waitUntil: waitUntilFn };
+			const originalClients = globalThis.clients;
+			const posted = [];
+			globalThis.clients = {
+				claim: () => Promise.resolve(),
+				matchAll: async () => [{ postMessage: (m) => posted.push(m) }],
+			};
+
+			const config = compileConfig({ activate: { eventType: "activated" } });
+			eventActivate(event, config);
+			await Promise.all(waitUntilFn.mock.calls.map((c) => c.arguments[0]));
+
+			deepEqual(posted, [{ type: "activated" }]);
+			globalThis.clients = originalClients;
+		},
+	);
+
 	// *** eventFetch *** //
 	await t.test(
 		"eventFetch: should reject respondWith promise when strategy throws",
@@ -785,7 +1019,7 @@ test("events", async (t) => {
 		};
 
 		const putFn = mock.fn();
-		openCaches["sw-default"] = { put: putFn, match: () => undefined };
+		cacheStore["sw-default"] = { put: putFn, match: () => undefined };
 
 		const config = compileConfig({
 			middlewares: [],
@@ -843,6 +1077,58 @@ test("events", async (t) => {
 
 	// *** backgroundFetchSuccessEvent *** //
 	await t.test(
+		"backgroundFetchSuccessEvent: stores every fetched record in its route's cache before announcing it",
+		async (tt) => {
+			const posted = [];
+			const originalBroadcastChannel = globalThis.BroadcastChannel;
+			globalThis.BroadcastChannel = class {
+				postMessage = (m) => posted.push(m);
+				close() {}
+			};
+			tt.after(() => {
+				globalThis.BroadcastChannel = originalBroadcastChannel;
+			});
+			const config = compileConfig({
+				cacheName: "bgf",
+				routes: [{ pathPattern: /\/media\//, cacheName: "media" }],
+			});
+			const record = (url, body) => ({
+				request: new Request(url),
+				responseReady: Promise.resolve(new Response(body)),
+			});
+			const waitUntils = [];
+			backgroundFetchSuccessEvent(
+				{
+					waitUntil: (p) => waitUntils.push(p),
+					registration: {
+						id: "podcast",
+						matchAll: async () => [
+							record("http://localhost:8080/media/ep1.mp3", "ep1"),
+							record("http://localhost:8080/ep1.json", "meta"),
+						],
+					},
+				},
+				config,
+			);
+			await Promise.all(waitUntils);
+
+			const media = await caches.match(
+				new Request("http://localhost:8080/media/ep1.mp3"),
+				{ cacheName: "sw-media" },
+			);
+			equal(await media?.text(), "ep1");
+			const meta = await caches.match(
+				new Request("http://localhost:8080/ep1.json"),
+				{ cacheName: "sw-bgf" },
+			);
+			equal(await meta?.text(), "meta");
+			deepEqual(posted, [{ stored: true }]);
+			await caches.delete("sw-media");
+			await caches.delete("sw-bgf");
+		},
+	);
+
+	await t.test(
 		"backgroundFetchSuccessEvent: should call waitUntil",
 		async () => {
 			const waitUntilFn = mock.fn();
@@ -860,10 +1146,10 @@ test("events", async (t) => {
 
 			const event = {
 				waitUntil: waitUntilFn,
-				registration: { id: "test-fetch" },
+				registration: { id: "test-fetch", matchAll: async () => [] },
 			};
 
-			backgroundFetchSuccessEvent(event);
+			backgroundFetchSuccessEvent(event, compileConfig());
 			equal(waitUntilFn.mock.callCount(), 1);
 			await waitUntilFn.mock.calls[0].arguments[0];
 
@@ -964,7 +1250,7 @@ test("events", async (t) => {
 			// Cacheable 200 → strategyNetworkFirst queues cachePut in waitUntil.
 			// Make the underlying put reject (non-quota) so cachePut rethrows and
 			// fetchInlineStrategy's Promise.all(waitUntils) rejects.
-			openCaches["sw-default"] = {
+			cacheStore["sw-default"] = {
 				put: () => Promise.reject(new Error("disk full")),
 				match: () => undefined,
 			};
@@ -988,7 +1274,7 @@ test("events", async (t) => {
 				caught = e;
 			}
 			globalThis.skipWaiting = originalSkipWaiting;
-			delete openCaches["sw-default"];
+			delete cacheStore["sw-default"];
 
 			strictEqual(caught instanceof Error, true);
 			strictEqual(/precache/i.test(caught.message), true);
@@ -1080,14 +1366,14 @@ test("events", async (t) => {
 
 	// *** setupMocks cleanup *** //
 	await t.test(
-		"setupMocks: returns a cleanup fn that restores openCaches",
+		"setupMocks: returns a cleanup fn that restores cacheStore",
 		async () => {
 			const { setupMocks } = await import("../../../fixtures/helper.js");
-			delete openCaches["sw-default"];
+			delete cacheStore["sw-default"];
 			const { cleanup } = setupMocks();
-			strictEqual("sw-default" in openCaches, true);
+			strictEqual("sw-default" in cacheStore, true);
 			cleanup();
-			strictEqual("sw-default" in openCaches, false);
+			strictEqual("sw-default" in cacheStore, false);
 		},
 	);
 
@@ -1095,15 +1381,15 @@ test("events", async (t) => {
 		"setupMocks: auto-registers cleanup when given a test context",
 		async (tt) => {
 			const { setupMocks } = await import("../../../fixtures/helper.js");
-			delete openCaches["sw-default"];
+			delete cacheStore["sw-default"];
 			let inner;
 			await tt.test("inner", async (iTT) => {
 				setupMocks(undefined, undefined, iTT);
-				inner = openCaches["sw-default"];
+				inner = cacheStore["sw-default"];
 				strictEqual(!!inner, true);
 			});
 			// Inner test finished → its t.after() should have fired.
-			strictEqual(openCaches["sw-default"], undefined);
+			strictEqual(cacheStore["sw-default"], undefined);
 		},
 	);
 
@@ -1120,8 +1406,10 @@ test("events", async (t) => {
 			}
 			strictEqual(caught instanceof Error, true);
 			strictEqual(/allowedOrigins/.test(caught.message), true);
-			// The message must spell out the security rationale (second literal).
-			strictEqual(/cache poisoning/.test(caught.message), true);
+			// The message must state the limit honestly: a SW only receives
+			// same-origin client messages, so this is not a cross-origin defence.
+			strictEqual(/same-origin/.test(caught.message), true);
+			strictEqual(/cache poisoning/.test(caught.message), false);
 		},
 	);
 
@@ -1148,8 +1436,8 @@ test("events", async (t) => {
 			// The `messageEvent?.source?.url` guard must tolerate a nullish event:
 			// dropping `?.` on messageEvent would throw a TypeError here.
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1173,8 +1461,8 @@ test("events", async (t) => {
 		"cacheOverrideEvent: should put string request/response into cache",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1197,14 +1485,39 @@ test("events", async (t) => {
 	);
 
 	await t.test(
+		"cacheOverrideEvent: a string response carries the posted headers",
+		async (tt) => {
+			// Without headers a rendered HTML string would be served back as
+			// text/plain and never render.
+			const putFn = mock.fn();
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
+			const handler = cacheOverrideEvent(compileConfig(), {
+				allowedOrigins: ["http://localhost:8080"],
+			});
+			await handler({
+				source: { url: "http://localhost:8080/page" },
+				data: {
+					request: "http://localhost:8080/rendered",
+					response: "<h1>hi</h1>",
+					headers: { "Content-Type": "text/html; charset=utf-8" },
+				},
+			});
+			const stored = putFn.mock.calls[0].arguments[1];
+			equal(stored.headers.get("Content-Type"), "text/html; charset=utf-8");
+			equal(await stored.text(), "<h1>hi</h1>");
+		},
+	);
+
+	await t.test(
 		"cacheOverrideEvent: hands the cache write to messageEvent.waitUntil",
 		async (tt) => {
 			// On a real ExtendableMessageEvent the write must extend the event via
 			// `waitUntil` so the worker is not killed mid-write; the same promise is
 			// also returned to the caller.
 			const putFn = mock.fn(() => Promise.resolve());
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1227,8 +1540,8 @@ test("events", async (t) => {
 		"cacheOverrideEvent: with allowedOrigins should reject cross-origin MessageEvent",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1249,8 +1562,8 @@ test("events", async (t) => {
 		"cacheOverrideEvent: with allowedOrigins should accept same-origin MessageEvent",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1271,8 +1584,8 @@ test("events", async (t) => {
 		"cacheOverrideEvent: should handle Request/Response objects",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const request = new Request("http://localhost:8080/test");
@@ -1298,8 +1611,8 @@ test("events", async (t) => {
 		"cacheOverrideEvent: ignores MessageEvent with no data",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1322,8 +1635,8 @@ test("events", async (t) => {
 			// Covers the `messageEvent?.source?.url` guard: a message without a
 			// usable source origin must be dropped before any URL parsing.
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {
@@ -1349,8 +1662,8 @@ test("events", async (t) => {
 			// non-string, non-Request value) must be dropped, not crash
 			// findRouteConfig/cachePut on `undefined`.
 			const putFn = mock.fn();
-			openCaches["sw-default"] = { put: putFn };
-			tt.after(() => delete openCaches["sw-default"]);
+			cacheStore["sw-default"] = { put: putFn };
+			tt.after(() => delete cacheStore["sw-default"]);
 
 			const config = compileConfig({ middlewares: [], routes: [] });
 			const handler = cacheOverrideEvent(config, {

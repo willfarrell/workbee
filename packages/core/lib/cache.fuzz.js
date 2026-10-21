@@ -20,7 +20,11 @@ test("fuzz: cacheExpired with arbitrary date strings", () => {
 test("fuzz: cacheExpired with valid past/future dates", () => {
 	fc.assert(
 		fc.property(
-			fc.date({ min: new Date("2000-01-01"), max: new Date("2030-01-01") }),
+			fc.date({
+				min: new Date("2000-01-01"),
+				max: new Date("2030-01-01"),
+				noInvalidDate: true,
+			}),
 			(date) => {
 				const response = new Response("", {
 					headers: { Expires: date.toUTCString() },

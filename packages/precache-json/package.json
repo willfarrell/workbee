@@ -43,9 +43,6 @@
 		"json",
 		"manifest"
 	],
-	"engines": {
-		"node": ">=24"
-	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {

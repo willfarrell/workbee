@@ -36,6 +36,8 @@ interface OfflineOptions {
 	quotaExceededEventType?: string;
 	dequeueEventType?: string;
 	failedEventType?: string;
+	/** Defaults to `"sw"` for the default `"offline"` store, otherwise
+	 * `` `sw-${objectStoreName}` `` so each queue gets its own database. */
 	databaseName?: string;
 	objectStoreName?: string;
 	redactHeaders?: string[];
@@ -46,6 +48,9 @@ interface OfflineMiddlewareResult {
 	afterNetwork: AfterMiddleware;
 	postMessageEvent: () => Promise<void>;
 	destroy: () => void;
+	/** Deletes every queued request and stops polling. Call on logout: queued
+	 * requests replay with whatever cookies are current at replay time. */
+	clear: () => Promise<void>;
 }
 
 declare function offlineMiddleware(

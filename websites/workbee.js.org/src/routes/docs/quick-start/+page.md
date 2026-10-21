@@ -25,7 +25,10 @@ import {
 } from "@work-bee/core";
 
 const config = compileConfig({
-  cachePrefix: "sw-",
+  // Bump the version on each release. `purgePrefixes` lets activate delete
+  // caches left by older versions (e.g. "sw-1-img" once "sw-2-" is live).
+  cachePrefix: "sw-1-",
+  activate: { purgePrefixes: ["sw-"] },
   routes: [
     {
       methods: ["GET"],
@@ -67,18 +70,22 @@ Install a middleware package and add it to your config:
 npm install @work-bee/fallback
 ```
 
+Middleware packages list `@work-bee/core` as a peer dependency, so keep `@work-bee/core` installed next to them.
+
 ```js
-import { strategyNetworkOnly, strategyCacheOnly } from "@work-bee/core";
+import { compileConfig, strategyNetworkOnly } from "@work-bee/core";
 import fallbackMiddleware from "@work-bee/fallback";
 
 const fallback = fallbackMiddleware({ path: "/offline.html" });
 
 const config = compileConfig({
+  // Fetched and stored during install
   precache: {
     routes: [{ path: "/offline.html" }],
-    strategy: strategyCacheOnly,
   },
   strategy: strategyNetworkOnly,
   middlewares: [fallback],
 });
 ```
+
+When a request fails with a network error, the fallback middleware serves `/offline.html` from the cache.

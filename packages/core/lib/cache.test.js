@@ -1,18 +1,58 @@
 /* global Response Headers */
 
-import { equal, strictEqual } from "node:assert";
+import { deepEqual, equal, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
-import "../../../fixtures/helper.js";
+import { cacheStore } from "../../../fixtures/helper.js";
 import {
 	applyExpires,
 	cacheDeleteExpired,
 	cacheExpired,
 	cacheMatch,
 	cachePut,
-	openCaches,
 } from "../index.js";
 
 test("cache", async (t) => {
+	await t.test(
+		"cachePut: keys by the request headers named in Vary, never credentials",
+		async (tt) => {
+			// A bare-URL key has no headers, so a `Vary: Accept` entry would never
+			// match a real request again. Credentials are left out so they are not
+			// persisted to disk as part of the stored request.
+			const putFn = mock.fn();
+			cacheStore["vary-cache"] = { put: putFn };
+			tt.after(() => delete cacheStore["vary-cache"]);
+			const request = new Request("http://localhost:8080/vary", {
+				headers: {
+					Accept: "text/html",
+					"Accept-Language": "fr",
+					Authorization: "Bearer secret",
+					Cookie: "session=secret",
+				},
+			});
+			await cachePut(
+				"vary-cache",
+				request,
+				new Response("", {
+					headers: { Vary: "accept, Authorization, Cookie, Origin" },
+				}),
+			);
+			const key = putFn.mock.calls[0].arguments[0];
+			equal(key.url, "http://localhost:8080/vary");
+			deepEqual([...key.headers], [["accept", "text/html"]]);
+		},
+	);
+
+	await t.test(
+		"cacheMatch: returns the entry stored by cachePut, undefined otherwise",
+		async (tt) => {
+			tt.after(() => caches.delete("match-cache"));
+			const request = new Request("http://localhost:8080/match");
+			equal(await cacheMatch("match-cache", request), undefined);
+			await cachePut("match-cache", request, new Response("stored"));
+			equal(await (await cacheMatch("match-cache", request)).text(), "stored");
+		},
+	);
+
 	// *** cacheExpired *** //
 	await t.test(
 		"cacheExpired: should return undefined for falsy response",
@@ -72,11 +112,11 @@ test("cache", async (t) => {
 
 	// *** cachePut *** //
 	await t.test(
-		"cachePut: should store response in cache via openCaches",
+		"cachePut: should store response in cache via cacheStore",
 		async (tt) => {
 			const putFn = mock.fn();
-			openCaches["test-cache"] = { put: putFn };
-			tt.after(() => delete openCaches["test-cache"]);
+			cacheStore["test-cache"] = { put: putFn };
+			tt.after(() => delete cacheStore["test-cache"]);
 
 			const request = new Request("http://localhost:8080/test");
 			const response = new Response("body", { status: 200 });
@@ -223,204 +263,8 @@ test("cache", async (t) => {
 	);
 
 	// *** Concurrent open race *** //
-	await t.test("concurrent cachePut only opens the cache once", async (tt) => {
-		const key = "race-cache";
-		delete openCaches[key];
-		const originalOpen = globalThis.caches.open;
-		tt.after(() => {
-			delete openCaches[key];
-			globalThis.caches.open = originalOpen;
-		});
-
-		let openCount = 0;
-		const putFn = mock.fn();
-		globalThis.caches.open = () => {
-			openCount += 1;
-			return new Promise((resolve) =>
-				setTimeout(() => resolve({ put: putFn }), 10),
-			);
-		};
-
-		const req1 = new Request("http://localhost:8080/a");
-		const req2 = new Request("http://localhost:8080/b");
-		const res = new Response("body", { status: 200 });
-
-		await Promise.all([cachePut(key, req1, res), cachePut(key, req2, res)]);
-
-		strictEqual(openCount, 1);
-		equal(putFn.mock.callCount(), 2);
-	});
-
-	// *** transient caches.open() rejection must not wedge future reads *** //
-	await t.test(
-		"getCache: a transient caches.open() rejection does not wedge subsequent calls",
-		async (tt) => {
-			const key = "transient-open-cache";
-			delete openCaches[key];
-			const originalOpen = globalThis.caches.open;
-			const originalHas = globalThis.caches.has;
-			tt.after(() => {
-				delete openCaches[key];
-				globalThis.caches.open = originalOpen;
-				globalThis.caches.has = originalHas;
-			});
-
-			// openCaches is empty until a successful open, so caches.has must be
-			// falsy for this key for getCache to attempt (re)opening each call.
-			globalThis.caches.has = () => Promise.resolve(false);
-
-			let openCount = 0;
-			const matchFn = mock.fn(() => Promise.resolve(undefined));
-			globalThis.caches.open = () => {
-				openCount += 1;
-				if (openCount === 1) {
-					return Promise.reject(new Error("transient open failure"));
-				}
-				return Promise.resolve({ match: matchFn });
-			};
-
-			const request = new Request("http://localhost:8080/test");
-
-			let firstError;
-			try {
-				await cacheMatch(key, request);
-			} catch (e) {
-				firstError = e;
-			}
-			strictEqual(firstError?.message, "transient open failure");
-
-			// The second call must succeed rather than re-returning the cached
-			// rejected promise from inFlightOpens.
-			await cacheMatch(key, request);
-
-			strictEqual(openCount, 2);
-			equal(matchFn.mock.callCount(), 1);
-		},
-	);
-
 	// *** cacheMatch fast path *** //
-	await t.test(
-		"cacheMatch: reads the open handle in parallel with caches.has validation",
-		async (tt) => {
-			const key = "parallel-cache";
-			const matchFn = mock.fn(() => Promise.resolve("hit"));
-			openCaches[key] = { match: matchFn };
-			const openFn = mock.fn();
-			const originalHas = globalThis.caches.has;
-			const originalOpen = globalThis.caches.open;
-			let resolveHas;
-			let hasCalls = 0;
-			globalThis.caches.has = () => {
-				hasCalls += 1;
-				if (hasCalls === 1) {
-					return new Promise((resolve) => {
-						resolveHas = resolve;
-					});
-				}
-				return Promise.resolve(true);
-			};
-			globalThis.caches.open = openFn;
-			tt.after(() => {
-				delete openCaches[key];
-				globalThis.caches.has = originalHas;
-				globalThis.caches.open = originalOpen;
-			});
-
-			const request = new Request("http://localhost:8080/test");
-			const resultPromise = cacheMatch(key, request);
-			// The speculative read must start before the handle validation has
-			// resolved — i.e. the two run in parallel, not serially.
-			equal(matchFn.mock.callCount(), 1);
-			resolveHas(true);
-			strictEqual(await resultPromise, "hit");
-			equal(matchFn.mock.callCount(), 1);
-			equal(openFn.mock.callCount(), 0);
-		},
-	);
-
-	await t.test(
-		"cacheMatch: reopens the cache when the open handle is stale (caches.has === false)",
-		async (tt) => {
-			const key = "stale-match-cache";
-			const staleMatchFn = mock.fn(() => Promise.resolve("stale"));
-			openCaches[key] = { match: staleMatchFn };
-			const freshMatchFn = mock.fn(() => Promise.resolve("fresh"));
-			const freshCache = { match: freshMatchFn };
-			const originalHas = globalThis.caches.has;
-			const originalOpen = globalThis.caches.open;
-			globalThis.caches.has = () => Promise.resolve(false);
-			globalThis.caches.open = () => Promise.resolve(freshCache);
-			tt.after(() => {
-				delete openCaches[key];
-				globalThis.caches.has = originalHas;
-				globalThis.caches.open = originalOpen;
-			});
-
-			const request = new Request("http://localhost:8080/test");
-			const result = await cacheMatch(key, request);
-			// The speculative stale read is discarded; the reopened cache answers.
-			strictEqual(result, "fresh");
-			equal(freshMatchFn.mock.callCount(), 1);
-			strictEqual(openCaches[key], freshCache);
-		},
-	);
-
 	// *** cachePut with caches.open *** //
-	await t.test(
-		"cachePut: should open cache when not in openCaches",
-		async (tt) => {
-			const putFn = mock.fn();
-			const mockCache = { put: putFn };
-
-			const originalOpen = globalThis.caches.open;
-			globalThis.caches.open = () => Promise.resolve(mockCache);
-			delete openCaches["new-cache"];
-			tt.after(() => {
-				delete openCaches["new-cache"];
-				globalThis.caches.open = originalOpen;
-			});
-
-			const request = new Request("http://localhost:8080/test");
-			const response = new Response("body", { status: 200 });
-
-			await cachePut("new-cache", request, response);
-
-			equal(putFn.mock.callCount(), 1);
-			equal(openCaches["new-cache"], mockCache);
-		},
-	);
-
-	await t.test(
-		"cachePut: reopens the cache when the cached reference is stale (caches.has === false)",
-		async (tt) => {
-			const stalePutFn = mock.fn(() => {
-				throw new Error("should not be called");
-			});
-			openCaches["stale-cache"] = { put: stalePutFn };
-
-			const freshPutFn = mock.fn();
-			const freshCache = { put: freshPutFn };
-
-			const originalHas = globalThis.caches.has;
-			const originalOpen = globalThis.caches.open;
-			globalThis.caches.has = () => Promise.resolve(false);
-			globalThis.caches.open = () => Promise.resolve(freshCache);
-			tt.after(() => {
-				delete openCaches["stale-cache"];
-				globalThis.caches.has = originalHas;
-				globalThis.caches.open = originalOpen;
-			});
-
-			const request = new Request("http://localhost:8080/test");
-			const response = new Response("body", { status: 200 });
-			await cachePut("stale-cache", request, response);
-
-			equal(stalePutFn.mock.callCount(), 0);
-			equal(freshPutFn.mock.callCount(), 1);
-			equal(openCaches["stale-cache"], freshCache);
-		},
-	);
-
 	// *** cachePut QuotaExceededError retry *** //
 	await t.test(
 		"cachePut: should retry after QuotaExceededError by deleting expired from same cache",
@@ -433,8 +277,6 @@ test("cache", async (t) => {
 					throw err;
 				}
 			});
-			openCaches["quota-cache"] = { put: putFn };
-
 			// retry 0 must purge expired entries from THIS cache. Seed one expired
 			// entry so the same-cache purge has observable work to do.
 			const pastDate = new Date(Date.now() - 86400 * 1000).toString();
@@ -443,18 +285,14 @@ test("cache", async (t) => {
 			});
 			const expiredKey = new Request("http://localhost:8080/expired");
 			const deleteFn = mock.fn();
-			const openSpy = mock.fn(() =>
-				Promise.resolve({
-					keys: () => Promise.resolve([expiredKey]),
-					match: () => Promise.resolve(expiredResponse),
-					delete: deleteFn,
-				}),
-			);
-			const originalOpen = globalThis.caches.open;
-			globalThis.caches.open = openSpy;
+			cacheStore["quota-cache"] = {
+				put: putFn,
+				keys: () => Promise.resolve([expiredKey]),
+				match: () => Promise.resolve(expiredResponse),
+				delete: deleteFn,
+			};
 			tt.after(() => {
-				delete openCaches["quota-cache"];
-				globalThis.caches.open = originalOpen;
+				delete cacheStore["quota-cache"];
 			});
 
 			const request = new Request("http://localhost:8080/test");
@@ -473,11 +311,11 @@ test("cache", async (t) => {
 		const putFn = mock.fn(() => {
 			throw new TypeError("some other error");
 		});
-		openCaches["error-cache"] = { put: putFn };
+		cacheStore["error-cache"] = { put: putFn };
 		// A non-Quota error must be logged and rethrown immediately — never
 		// swallowed into the retry path.
 		const errorSpy = tt.mock.method(console, "error", () => {});
-		tt.after(() => delete openCaches["error-cache"]);
+		tt.after(() => delete cacheStore["error-cache"]);
 
 		const request = new Request("http://localhost:8080/test");
 		const response = new Response("body", { status: 200 });
@@ -504,21 +342,18 @@ test("cache", async (t) => {
 				const err = new DOMException("quota exceeded", "QuotaExceededError");
 				throw err;
 			});
-			openCaches["quota-cache-2"] = { put: putFn };
+			cacheStore["quota-cache-2"] = {
+				put: putFn,
+				keys: () => Promise.resolve([]),
+				match: () => Promise.resolve(undefined),
+				delete: mock.fn(),
+			};
 
-			const originalOpen = globalThis.caches.open;
 			const originalKeys = globalThis.caches.keys;
-			globalThis.caches.open = () =>
-				Promise.resolve({
-					keys: () => Promise.resolve([]),
-					match: () => Promise.resolve(undefined),
-					delete: mock.fn(),
-				});
 			const keysSpy = mock.fn(() => Promise.resolve([]));
 			globalThis.caches.keys = keysSpy;
 			tt.after(() => {
-				delete openCaches["quota-cache-2"];
-				globalThis.caches.open = originalOpen;
+				delete cacheStore["quota-cache-2"];
 				globalThis.caches.keys = originalKeys;
 			});
 
@@ -599,32 +434,6 @@ test("cache", async (t) => {
 
 			globalThis.caches.keys = originalKeys;
 			globalThis.caches.delete = originalDelete;
-		},
-	);
-
-	await t.test(
-		"cachesDelete: should remove deleted keys from openCaches",
-		async (tt) => {
-			const { cachesDelete, openCaches } = await import("../index.js");
-
-			openCaches["sw-keep"] = { fake: true };
-			openCaches["sw-remove"] = { fake: true };
-
-			const originalKeys = globalThis.caches.keys;
-			const originalDelete = globalThis.caches.delete;
-			globalThis.caches.keys = () => Promise.resolve(["sw-keep", "sw-remove"]);
-			globalThis.caches.delete = mock.fn(() => Promise.resolve(true));
-			tt.after(() => {
-				delete openCaches["sw-keep"];
-				delete openCaches["sw-remove"];
-				globalThis.caches.keys = originalKeys;
-				globalThis.caches.delete = originalDelete;
-			});
-
-			await cachesDelete(["sw-keep"]);
-
-			equal(openCaches["sw-remove"], undefined);
-			equal(openCaches["sw-keep"]?.fake, true);
 		},
 	);
 
@@ -764,16 +573,26 @@ test("cache", async (t) => {
 		},
 	);
 
+	await t.test("applyExpires: reads max-age case-insensitively", async () => {
+		// RFC 9111 §5.2: directive names are case-insensitive.
+		const date = new Date().toUTCString();
+		const result = applyExpires(
+			new Response("", {
+				headers: { "Cache-Control": "Public, Max-Age=60", Date: date },
+			}),
+		);
+		equal(
+			new Date(result.headers.get("Expires")).getTime(),
+			new Date(date).getTime() + 60 * 1000,
+		);
+	});
+
 	await t.test(
-		"applyExpires: should not overwrite an existing Expires header",
+		"applyExpires: keeps an existing Expires header when there is no max-age",
 		async () => {
-			const existingExpires = new Date(Date.now() + 123456).toString();
+			const existingExpires = new Date(Date.now() + 123456).toUTCString();
 			const response = new Response("", {
-				headers: new Headers({
-					"Cache-Control": "max-age=60",
-					Date: new Date().toString(),
-					Expires: existingExpires,
-				}),
+				headers: new Headers({ Expires: existingExpires }),
 			});
 
 			const result = applyExpires(response);
@@ -823,54 +642,144 @@ test("cache", async (t) => {
 	);
 
 	await t.test(
-		"applyExpires: should honor s-maxage the same as max-age",
+		"applyExpires: ignores s-maxage (a ServiceWorker cache is a private cache)",
 		async () => {
-			const date = new Date().toString();
-			const response = new Response("", {
-				headers: new Headers({
-					"Cache-Control": "s-maxage=120",
-					Date: date,
+			// RFC 9111 §5.2.2.10: s-maxage only applies to shared caches. The
+			// common CDN pattern `max-age=0, s-maxage=N` must not be browser-cached.
+			for (const cacheControl of [
+				"s-maxage=120",
+				"max-age=0, s-maxage=86400",
+				"s-maxage=86400, max-age=0",
+			]) {
+				const result = applyExpires(
+					new Response("", { headers: { "Cache-Control": cacheControl } }),
+				);
+				equal(result.headers.get("Expires"), null, cacheControl);
+			}
+			const date = new Date().toUTCString();
+			const result = applyExpires(
+				new Response("", {
+					headers: { "Cache-Control": "s-maxage=120, max-age=60", Date: date },
 				}),
-			});
-
-			const result = applyExpires(response);
-
-			const expiresDate = new Date(result.headers.get("Expires")).getTime();
-			const expected = new Date(date).getTime() + 120 * 1000;
-			equal(expiresDate, expected);
+			);
+			equal(
+				new Date(result.headers.get("Expires")).getTime(),
+				new Date(date).getTime() + 60 * 1000,
+			);
 		},
 	);
 
 	await t.test(
-		"applyExpires: prefers s-maxage over max-age when both are present (regardless of order)",
+		"applyExpires: max-age overrides an existing Expires header",
 		async () => {
-			const date = new Date().toString();
-
-			// max-age listed first.
-			const responseA = new Response("", {
-				headers: new Headers({
-					"Cache-Control": "max-age=60, s-maxage=120",
-					Date: date,
+			// RFC 9111 §5.3: with max-age present, Expires MUST be ignored.
+			const date = new Date().toUTCString();
+			const result = applyExpires(
+				new Response("", {
+					headers: {
+						"Cache-Control": "max-age=3600",
+						Expires: "Thu, 01 Jan 1970 00:00:00 GMT",
+						Date: date,
+					},
 				}),
-			});
-			const resultA = applyExpires(responseA);
-			equal(
-				new Date(resultA.headers.get("Expires")).getTime(),
-				new Date(date).getTime() + 120 * 1000,
 			);
+			equal(
+				new Date(result.headers.get("Expires")).getTime(),
+				new Date(date).getTime() + 3600 * 1000,
+			);
+			equal(cacheExpired(result), false);
+		},
+	);
 
-			// s-maxage listed first (regex-alternation order must not matter).
-			const responseB = new Response("", {
-				headers: new Headers({
-					"Cache-Control": "s-maxage=120, max-age=60",
-					Date: date,
+	await t.test(
+		"applyExpires: a stale max-age drops a future Expires so it is not cached",
+		async () => {
+			const result = applyExpires(
+				new Response("", {
+					headers: {
+						"Cache-Control": "max-age=0",
+						Expires: new Date(Date.now() + 86400 * 1000).toUTCString(),
+					},
 				}),
-			});
-			const resultB = applyExpires(responseB);
-			equal(
-				new Date(resultB.headers.get("Expires")).getTime(),
-				new Date(date).getTime() + 120 * 1000,
 			);
+			equal(result.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: subtracts the Age header from max-age",
+		async () => {
+			const date = new Date().toUTCString();
+			const result = applyExpires(
+				new Response("", {
+					headers: { "Cache-Control": "max-age=100", Age: "40", Date: date },
+				}),
+			);
+			equal(
+				new Date(result.headers.get("Expires")).getTime(),
+				new Date(date).getTime() + 60 * 1000,
+			);
+			// Already stale by the time it arrived: not cacheable as fresh.
+			const stale = applyExpires(
+				new Response("", {
+					headers: { "Cache-Control": "max-age=100", Age: "100", Date: date },
+				}),
+			);
+			equal(stale.headers.get("Expires"), null);
+		},
+	);
+
+	await t.test(
+		"applyExpires: current age is max(now - Date, Age), counted from now",
+		(tt) => {
+			// RFC 9111 §4.2.3. Age already includes the time since Date, so the
+			// two must not be added, and an origin clock ahead of ours must not
+			// extend freshness.
+			const now = new Date("Thu, 01 Jan 2026 00:10:00 GMT").getTime();
+			tt.mock.method(Date, "now", () => now);
+			const expiresFor = (headers) =>
+				new Date(
+					applyExpires(new Response("", { headers })).headers.get("Expires"),
+				).getTime();
+			// Date 40s ago and Age 40: 40s old, not 80s.
+			equal(
+				expiresFor({
+					"Cache-Control": "max-age=100",
+					Age: "40",
+					Date: new Date(now - 40 * 1000).toUTCString(),
+				}),
+				now + 60 * 1000,
+			);
+			// Date an hour in the future: apparent age is 0, not negative.
+			equal(
+				expiresFor({
+					"Cache-Control": "max-age=60",
+					Date: new Date(now + 3600 * 1000).toUTCString(),
+				}),
+				now + 60 * 1000,
+			);
+			// Date 30s ago, no Age: the apparent age counts.
+			equal(
+				expiresFor({
+					"Cache-Control": "max-age=60",
+					Date: new Date(now - 30 * 1000).toUTCString(),
+				}),
+				now + 30 * 1000,
+			);
+		},
+	);
+
+	await t.test(
+		"cacheExpired: an invalid Expires value counts as already expired",
+		async () => {
+			// RFC 9111 §5.3: invalid dates (esp. "0") represent a time in the past.
+			for (const expires of ["0", "-1", "never", "not a date"]) {
+				equal(
+					cacheExpired(new Response("", { headers: { Expires: expires } })),
+					true,
+					expires,
+				);
+			}
 		},
 	);
 

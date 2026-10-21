@@ -20,14 +20,10 @@
 	"files": [
 		"index.js",
 		"index.d.ts",
-		"lib/cache.js",
-		"lib/config.js",
-		"lib/console.js",
-		"lib/events.js",
-		"lib/http.js",
-		"lib/postMessage.js",
-		"lib/route.js",
-		"lib/strategies.js"
+		"lib/*.js",
+		"!lib/*.test.js",
+		"!lib/*.bench.js",
+		"!lib/*.fuzz.js"
 	],
 	"scripts": {
 		"test": "node --test",
@@ -51,9 +47,6 @@
 		"cache",
 		"network"
 	],
-	"engines": {
-		"node": ">=24"
-	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {

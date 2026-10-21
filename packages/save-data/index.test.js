@@ -41,6 +41,33 @@ test("saveDataMiddleware.before: Should override strategy when Save-Data header 
 	deepEqual(config.strategy, strategyCacheOnly);
 });
 
+test("saveDataMiddleware.before: Should keep the strategy for non-GET/HEAD requests", async (_t) => {
+	// A cache-only POST would never reach the network.
+	const request = new Request(`${domain}/200`, {
+		method: "POST",
+		headers: new Headers({ "Save-Data": "on" }),
+	});
+
+	const saveData = saveDataMiddleware();
+	const { event, config } = setupMocks(strategyNetworkFirst, `${domain}/200`);
+	await saveData.before(request, event, config);
+
+	deepEqual(config.strategy, strategyNetworkFirst);
+});
+
+test("saveDataMiddleware.before: Should override strategy for HEAD requests", async (_t) => {
+	const request = new Request(`${domain}/200`, {
+		method: "HEAD",
+		headers: new Headers({ "Save-Data": "on" }),
+	});
+
+	const saveData = saveDataMiddleware();
+	const { event, config } = setupMocks(strategyNetworkFirst, `${domain}/200`);
+	await saveData.before(request, event, config);
+
+	deepEqual(config.strategy, strategyCacheOnly);
+});
+
 test("saveDataMiddleware.before: Should skip when Save-Data header not set (no options)", async (_t) => {
 	const request = new Request(`${domain}/200`, {
 		method: "GET",
@@ -54,71 +81,41 @@ test("saveDataMiddleware.before: Should skip when Save-Data header not set (no o
 	deepEqual(config.strategy, strategyCacheOnly);
 });
 
-test("saveDataMiddleware.after: Should restore original strategy after Save-Data override", async (_t) => {
-	const request = new Request(`${domain}/200`, {
-		method: "GET",
-		headers: new Headers({ "Save-Data": "on" }),
+test("saveDataMiddleware: a following non-Save-Data request uses the original strategy", async (_t) => {
+	// fetchStrategy hands each request its own config copy, so the override in
+	// `before` is scoped to the Save-Data request and needs no restore step.
+	const calls = [];
+	const saveDataStrategy = async () => {
+		calls.push("saveData");
+		return new Response("", { status: 200 });
+	};
+	const originalStrategy = async () => {
+		calls.push("original");
+		return new Response("", { status: 200 });
+	};
+	const config = compileConfig({
+		routes: [
+			{
+				path: "/200",
+				pathPattern: /\/200$/,
+				strategy: originalStrategy,
+				middlewares: [saveDataMiddleware({ saveDataStrategy })],
+			},
+		],
 	});
-	const response = new Response("", { status: 200 });
+	const route = config.routes[0];
+	const event = { waitUntil: () => {} };
 
-	const saveData = saveDataMiddleware({
-		saveDataStrategy: strategyCacheOnly,
-	});
-	const { event, config } = setupMocks(strategyNetworkFirst, `${domain}/200`);
+	await fetchStrategy(
+		new Request(`${domain}/200`, {
+			headers: new Headers({ "Save-Data": "on" }),
+		}),
+		event,
+		route,
+	);
+	await fetchStrategy(new Request(`${domain}/200`), event, route);
 
-	// before overrides strategy
-	await saveData.before(request, event, config);
-	deepEqual(config.strategy, strategyCacheOnly);
-
-	// after restores it
-	const result = saveData.after(request, response, event, config);
-	deepEqual(config.strategy, strategyNetworkFirst);
-	deepEqual(result, response);
-});
-
-test("saveDataMiddleware.after: Should not change strategy when Save-Data was not set", async (_t) => {
-	const request = new Request(`${domain}/200`, {
-		method: "GET",
-		headers: new Headers({}),
-	});
-	const response = new Response("", { status: 200 });
-
-	const saveData = saveDataMiddleware({
-		saveDataStrategy: strategyCacheOnly,
-	});
-	const { event, config } = setupMocks(strategyNetworkFirst, `${domain}/200`);
-
-	// before does not override
-	await saveData.before(request, event, config);
-	deepEqual(config.strategy, strategyNetworkFirst);
-
-	// after should still work fine
-	const result = saveData.after(request, response, event, config);
-	deepEqual(result, response);
-});
-
-test("saveDataMiddleware.after: Should leave strategy untouched when before never ran for the event", async (_t) => {
-	// `after` may fire for an event that this middleware instance never saw in
-	// `before` (e.g. a different middleware short-circuited). With no recorded
-	// original strategy, `after` must NOT touch config.strategy — clobbering it
-	// to `undefined` would break the route for that request.
-	const request = new Request(`${domain}/200`, {
-		method: "GET",
-		headers: new Headers({}),
-	});
-	const response = new Response("", { status: 200 });
-
-	const saveData = saveDataMiddleware({
-		saveDataStrategy: strategyCacheOnly,
-	});
-	const { event, config } = setupMocks(strategyNetworkFirst, `${domain}/200`);
-
-	// Note: `before` is intentionally NOT called, so no original strategy is
-	// recorded for `event`.
-	const result = saveData.after(request, response, event, config);
-
-	strictEqual(config.strategy, strategyNetworkFirst);
-	deepEqual(result, response);
+	deepEqual(calls, ["saveData", "original"]);
 });
 
 test("saveDataMiddleware: never mutates the shared route config", async (_t) => {

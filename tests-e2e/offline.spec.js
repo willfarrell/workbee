@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+// These tests fulfil the ServiceWorker's own requests with context.route();
+// Playwright only intercepts ServiceWorker network traffic in Chromium.
+const SW_ROUTE_ONLY_CHROMIUM =
+	"Playwright routes ServiceWorker-originated requests only in Chromium";
+
 const localhost = "/index.html";
 
 const awaitServiceWorker = async (page) => {
@@ -20,8 +25,10 @@ const awaitServiceWorker = async (page) => {
 
 test.describe("offlineMiddleware", () => {
 	test("enqueues a failed POST then replays it once the network recovers", async ({
+		browserName,
 		browser,
 	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 

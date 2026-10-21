@@ -32,10 +32,11 @@ export const addHeaderToRequest = (request, key, value) => {
 
 export const isResponse = (response) => response instanceof Response;
 export const newResponse = ({ status, statusText, body }, headersObj) => {
-	const headers = headersGetAll(headersObj);
-	if (headers.Date === undefined && headers.date === undefined) {
+	// Any HeadersInit (Headers, record, [name, value][]); null means none.
+	const headers = new Headers(headersObj ?? undefined);
+	if (!headers.has("Date")) {
 		// HTTP-date format (RFC 9110 §5.6.7); `.toString()` is not a valid date.
-		headers.Date = new Date().toUTCString();
+		headers.set("Date", new Date().toUTCString());
 	}
 	return new Response(body, { status, statusText, headers });
 };
@@ -61,12 +62,9 @@ export const deleteHeaderFromResponse = (response, key) => {
 	return rebuildResponse(response, headers);
 };
 
-export const getMethod = "GET";
 export const postMethod = "POST";
 export const putMethod = "PUT";
 export const patchMethod = "PATCH";
 export const deleteMethod = "DELETE";
-export const headMethod = "HEAD";
-export const optionsMethod = "OPTIONS";
 
 export const authorizationHeader = "Authorization";

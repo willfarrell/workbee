@@ -33,7 +33,13 @@ const mime = {
 const safePath = /^[A-Za-z0-9_./-]*$/;
 
 export const handler = (req, res) => {
-	const urlPath = decodeURIComponent(req.url.split("?")[0]);
+	let urlPath;
+	try {
+		urlPath = decodeURIComponent(req.url.split("?")[0]);
+	} catch {
+		res.writeHead(400).end();
+		return;
+	}
 	const [rootDir, rawInput] = urlPath.startsWith(PACKAGES_PREFIX)
 		? [PACKAGES_ROOT, urlPath.slice(PACKAGES_PREFIX.length)]
 		: [ROOT, urlPath.replace(/^\/+/, "")];
@@ -94,7 +100,7 @@ export const handler = (req, res) => {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
 	const PORT = Number(process.env.PORT ?? 8080);
-	createServer(handler).listen(PORT, () => {
-		console.log(`demo listening on http://localhost:${PORT}`);
+	createServer(handler).listen(PORT, "127.0.0.1", () => {
+		console.log(`demo listening on http://127.0.0.1:${PORT}`);
 	});
 }

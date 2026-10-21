@@ -3,7 +3,7 @@
 const defaultActivityEvents = [
 	"load",
 
-	"keypress",
+	"keydown",
 	"mousedown",
 	"mousemove",
 	"scroll",
@@ -13,27 +13,74 @@ const defaultActivityEvents = [
 	"wheel",
 ];
 
-export default (events = defaultActivityEvents) => {
-	let activityTimestamp = 0;
-	const handlers = [];
-	events.forEach((name) => {
-		const handler = () => {
-			const now = Date.now();
-			if (activityTimestamp + 1000 > now) {
-				return;
-			}
-			activityTimestamp = now;
+// Passive: activity listeners never call preventDefault, so scroll/touch stay
+// smooth.
+const listenerOptions = { capture: true, passive: true };
 
-			navigator.serviceWorker?.controller?.postMessage({
-				type: "inactivity",
-			});
-		};
-		document.addEventListener(name, handler, true);
-		handlers.push({ name, handler });
-	});
-	return () => {
-		for (const { name, handler } of handlers) {
-			document.removeEventListener(name, handler, true);
+// Sent by the ServiceWorker middleware when a request starts or finishes.
+const activityEventType = "inactivity-activity";
+
+// Shares DOM activity between tabs; SW messages already reach every tab.
+const channelName = "@work-bee/inactivity";
+const broadcastIntervalMs = 1000;
+
+const defaultInactivityEvent = () =>
+	console.warn(
+		"@work-bee/inactivity: inactivity threshold reached but no `inactivityEvent` callback was provided",
+	);
+
+// The countdown lives in the page, not the ServiceWorker: an idle worker is
+// terminated after ~30s, taking any long setTimeout with it.
+export default ({
+	inactivityAllowedInMin = 15,
+	inactivityEvent = defaultInactivityEvent,
+	events = defaultActivityEvents,
+} = {}) => {
+	const inactivityAllowedInMs = Math.floor(inactivityAllowedInMin * 60 * 1000);
+	let activityTimestamp;
+	let timeout;
+	// Activity only records a timestamp (mousemove fires constantly); the timer
+	// re-arms itself for whatever is left of the window when it wakes early.
+	const check = () => {
+		const remaining = activityTimestamp + inactivityAllowedInMs - Date.now();
+		if (remaining > 0) {
+			timeout = setTimeout(check, remaining);
+			return;
 		}
+		timeout = undefined;
+		inactivityEvent();
+	};
+	const activity = () => {
+		activityTimestamp = Date.now();
+		timeout ??= setTimeout(check, inactivityAllowedInMs);
+	};
+	const channel = new BroadcastChannel(channelName);
+	channel.onmessage = activity;
+	let broadcastTimestamp = -Infinity;
+	// Throttled: mousemove would otherwise flood every other tab.
+	const localActivity = () => {
+		activity();
+		if (activityTimestamp - broadcastTimestamp >= broadcastIntervalMs) {
+			broadcastTimestamp = activityTimestamp;
+			channel.postMessage(null);
+		}
+	};
+	const message = (event) => {
+		if (event.data?.type === activityEventType) activity();
+	};
+
+	for (const name of events) {
+		document.addEventListener(name, localActivity, listenerOptions);
+	}
+	navigator.serviceWorker?.addEventListener("message", message);
+	activity();
+
+	return () => {
+		clearTimeout(timeout);
+		channel.close();
+		for (const name of events) {
+			document.removeEventListener(name, localActivity, listenerOptions);
+		}
+		navigator.serviceWorker?.removeEventListener("message", message);
 	};
 };

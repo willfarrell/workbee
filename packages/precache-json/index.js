@@ -5,6 +5,12 @@
 // `precache.extract` in `@work-bee/core`. Core deliberately ships no default:
 // the manifest format is an application concern, so the parser is a plugin.
 export const precacheExtractJSON = async (response) => {
+	// An error page (404/5xx) must fail the install, not precache nothing.
+	if (!response.ok) {
+		throw new Error(
+			`precacheExtractJSON: manifest response status ${response.status}`,
+		);
+	}
 	const rawContentType = response.headers.get("Content-Type");
 	// Stryker disable next-line StringLiteral: this `?? ""` fallback is only used
 	// when the Content-Type header is absent. The fallback string is fed straight

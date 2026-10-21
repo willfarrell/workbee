@@ -1,57 +1,32 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-const defaults = {
-	inactivityAllowedInMin: 15,
-	inactivityEvent: () =>
-		console.warn(
-			"@work-bee/inactivity: inactivity threshold reached but no `inactivityEvent` callback was provided",
-		),
-};
+import { consoleError, postMessageToAll } from "@work-bee/core";
 
-const inactivityMiddleware = (opts) => {
-	let requestCount = 0;
-	const { inactivityAllowedInMin, inactivityEvent } = {
-		...defaults,
-		...opts,
-	};
-	const inactivityAllowedInMs = Math.floor(inactivityAllowedInMin * 60 * 1000);
-	let inactivityTimeout;
-	const resetInactivityTimeout = (duration) => {
-		clearTimeout(inactivityTimeout);
-		if (!requestCount) {
-			inactivityTimeout = setTimeout(() => {
-				inactivityEvent();
-			}, duration);
-		}
+// Must match the type `@work-bee/inactivity/client` listens for.
+const activityMessage = { type: "inactivity-activity" };
+const throttleInMs = 1000;
+
+// The inactivity countdown runs in the page (see client.js): an idle
+// ServiceWorker is terminated after ~30s, so a timer here would never fire.
+// This middleware only tells the pages that network activity happened.
+const inactivityMiddleware = ({ postMessage = postMessageToAll } = {}) => {
+	let notifiedTimestamp = -Infinity;
+	const notify = () => {
+		const now = Date.now();
+		if (now - notifiedTimestamp < throttleInMs) return;
+		notifiedTimestamp = now;
+		postMessage(activityMessage).catch(consoleError);
 	};
 
-	const inflight = new WeakSet();
-	const before = (request, event, _config) => {
-		clearTimeout(inactivityTimeout);
-		requestCount += 1;
-		if (event) inflight.add(event);
+	const before = (request, _event, _config) => {
+		notify();
 		return request;
 	};
-	const after = (_request, response, event, _config) => {
-		if (!event || inflight.delete(event)) {
-			requestCount -= 1;
-		}
-		resetInactivityTimeout(inactivityAllowedInMs);
+	const after = (_request, response, _event, _config) => {
+		notify();
 		return response;
 	};
-	// Page -> sw
-	// Trigger when client is active
-	const postMessageEvent = () => {
-		resetInactivityTimeout(inactivityAllowedInMs);
-	};
-	resetInactivityTimeout(inactivityAllowedInMs);
-	// The constructor arms a timer straight away, so without this a caller has no
-	// way to release it (and a Node process holding an instance stays alive for
-	// the whole window). Mirrors `offline`/`session`.
-	const destroy = () => {
-		clearTimeout(inactivityTimeout);
-	};
-	return { before, after, postMessageEvent, destroy };
+	return { before, after };
 };
 
 export default inactivityMiddleware;

@@ -14,7 +14,9 @@ export default {
 	packageManager: "npm",
 	testRunner: "command",
 	commandRunner: {
-		command: `node --no-warnings=ExperimentalWarning --test --experimental-test-module-mocks ./${base}/**/*.test.js`,
+		// Single-quoted so Node expands the glob; /bin/sh has no globstar and
+		// treats `**` as `*` (dropping e.g. core/index.test.js).
+		command: `node --no-warnings=ExperimentalWarning --test './${base}/**/*.test.js'`,
 	},
 	coverageAnalysis: "off",
 	// Scope the type-check-stripping preprocessor to JS only. Its default ("true")
@@ -24,7 +26,7 @@ export default {
 	mutate: [
 		`${base}/**/*.js`,
 		`!${base}/**/*.test.js`,
-		`!${base}/**/*.perf.js`,
+		`!${base}/**/*.bench.js`,
 		`!${base}/**/*.fuzz.js`,
 	],
 	plugins: ["@stryker-mutator/*"],

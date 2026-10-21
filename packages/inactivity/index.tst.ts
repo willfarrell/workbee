@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 
 import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
+import { compileConfig } from "@work-bee/core";
 import inactivity from "@work-bee/inactivity";
 import inactivityClient from "@work-bee/inactivity/client";
 import { describe, expect, test } from "tstyche";
@@ -11,43 +12,38 @@ describe("inactivity", () => {
 		expect(result).type.toBe<{
 			before: BeforeMiddleware;
 			after: AfterMiddleware;
-			postMessageEvent: () => void;
-			destroy: () => void;
 		}>();
 	});
 
-	test("before is BeforeMiddleware", () => {
-		const result = inactivity();
-		expect(result.before).type.toBe<BeforeMiddleware>();
+	test("accepts a postMessage option", () => {
+		inactivity({ postMessage: async (_message) => {} });
 	});
 
-	test("after is AfterMiddleware", () => {
-		const result = inactivity();
-		expect(result.after).type.toBe<AfterMiddleware>();
-	});
-
-	test("postMessageEvent returns void", () => {
-		const result = inactivity();
-		expect(result.postMessageEvent()).type.toBe<void>();
-	});
-
-	test("destroy returns void", () => {
-		const result = inactivity();
-		expect(result.destroy()).type.toBe<void>();
-	});
-
-	test("accepts all options", () => {
-		inactivity({
+	test("rejects the removed timer options", () => {
+		expect(inactivity).type.not.toBeCallableWith({
 			inactivityAllowedInMin: 30,
-			inactivityEvent: () => {},
 		});
 	});
 
-	test("inactivityClient accepts events array and returns cleanup", () => {
-		expect(inactivityClient(["click", "keydown"])).type.toBe<() => void>();
+	test("is usable as a middleware", () => {
+		compileConfig({ middlewares: [inactivity()] });
+	});
+
+	test("inactivityClient accepts all options and returns cleanup", () => {
+		expect(
+			inactivityClient({
+				inactivityAllowedInMin: 30,
+				inactivityEvent: () => {},
+				events: ["click", "keydown"],
+			}),
+		).type.toBe<() => void>();
 	});
 
 	test("inactivityClient accepts no arguments and returns cleanup", () => {
 		expect(inactivityClient()).type.toBe<() => void>();
+	});
+
+	test("inactivityClient no longer takes an events array", () => {
+		expect(inactivityClient).type.not.toBeCallableWith(["click"]);
 	});
 });

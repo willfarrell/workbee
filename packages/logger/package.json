@@ -25,8 +25,8 @@
 		"test": "node --test",
 		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
-	"dependencies": {
-		"@work-bee/core": "0.4.0"
+	"peerDependencies": {
+		"@work-bee/core": "^0.4.0"
 	},
 	"repository": {
 		"type": "git",
@@ -46,9 +46,6 @@
 		"logging",
 		"network"
 	],
-	"engines": {
-		"node": ">=24"
-	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {

@@ -52,4 +52,10 @@ test("demo/serve", async (t) => {
 			await response.arrayBuffer();
 		},
 	);
+
+	await t.test("rejects malformed percent-encoding with 400", async () => {
+		const response = await fetch(`${baseUrl}/%E0%A4%A`);
+		strictEqual(response.status, 400);
+		await response.arrayBuffer();
+	});
 });
