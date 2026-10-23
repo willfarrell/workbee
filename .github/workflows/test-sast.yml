@@ -131,12 +131,10 @@ jobs:
           scanners: license
           scan-type: fs
           scan-ref: .
+          trivy-config: .github/trivy.yml # license policy, shared with `npm run test:sast:trivy`
           hide-progress: true
           exit-code: 1
           format: table
-        env:
-          # keep in sync with --ignored-licenses in the root test:sast:trivy script
-          TRIVY_IGNORED_LICENSES: 0BSD,Apache-2.0,BSD-1-Clause,BSD-2-Clause,BSD-3-Clause,CC0-1.0,CC-BY-4.0,ISC,MIT,Python-2.0,LGPL-3.0-or-later,MPL-2.0,BlueOak-1.0.0,Unlicense
 
   license:
     name: "License headers"

@@ -2,8 +2,6 @@ name: Tests (types)
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 env:
   NODE_VERSION: 26.x
