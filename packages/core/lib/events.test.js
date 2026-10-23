@@ -875,6 +875,37 @@ test("events", async (t) => {
 	);
 
 	await t.test(
+		"eventActivate: reaps stale caches under a route's own cachePrefix",
+		async (tt) => {
+			const waitUntilFn = mock.fn();
+			const originalClients = globalThis.clients;
+			globalThis.clients = { claim: mock.fn(() => Promise.resolve()) };
+			tt.after(async () => {
+				globalThis.clients = originalClients;
+				for (const key of await caches.keys()) await caches.delete(key);
+			});
+			for (const key of ["v2-api", "v2-stale", "app-owned-data"]) {
+				await caches.open(key);
+			}
+
+			const config = compileConfig({
+				routes: [
+					{
+						pathPattern: pathPattern("/api/.*$"),
+						cachePrefix: "v2-",
+						cacheName: "api",
+					},
+				],
+			});
+
+			eventActivate({ waitUntil: waitUntilFn }, config);
+			await Promise.all(waitUntilFn.mock.calls.map((c) => c.arguments[0]));
+
+			deepEqual((await caches.keys()).sort(), ["app-owned-data", "v2-api"]);
+		},
+	);
+
+	await t.test(
 		"eventActivate: keeps caches used by strategyPartition sub-routes",
 		async (tt) => {
 			const { strategyHTMLPartition } = await import("../index.js");

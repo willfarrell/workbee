@@ -1847,3 +1847,141 @@ test("sessionMiddleware: a restart purge never creates the cache it checks", asy
 
 	strictEqual((await caches.keys()).includes("sw-never-created"), false);
 });
+
+test("sessionMiddleware: an authz response counts as activity and defers the inactivity prompt", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 120000,
+		inactivityPromptEventType: "inactivity-prompt",
+		postMessage: postMessageMock,
+	});
+	await authenticateSession(session);
+
+	// The prompt is due at 60000; an authz round-trip just before it is activity.
+	mock.timers.tick(59000);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	mock.timers.tick(1000);
+
+	const promptCalls = postMessageMock.mock.calls.filter(
+		(c) => c.arguments[0]?.type === "inactivity-prompt",
+	);
+	strictEqual(promptCalls.length, 0);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: a re-login replaces the previous session's expiry timer", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const expiries = [5000, 600000];
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => expiries.shift(),
+		expiryEventType: "session-expired",
+		postMessage: postMessageMock,
+	});
+	await authenticateSession(session);
+	mock.timers.tick(1000);
+	await authenticateSession(session);
+
+	// The first session's deadline passes; only the second one is live.
+	mock.timers.tick(5000);
+
+	const expiredCalls = postMessageMock.mock.calls.filter(
+		(c) => c.arguments[0]?.type === "session-expired",
+	);
+	strictEqual(expiredCalls.length, 0);
+	const request = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	strictEqual(request.headers.get("Authorization"), "Bearer test-token");
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: an expired session stops attaching the token", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 5000,
+		postMessage: mock.fn(),
+	});
+	await authenticateSession(session);
+	mock.timers.tick(5001);
+
+	const request = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-expired-session" },
+	);
+	strictEqual(request.headers.get("Authorization"), null);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: a logout only purges caches written since the previous logout", async (t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+	const logout = async () => {
+		await session.afterNetwork(
+			new Request(`${domain}/auth/logout`, { method: "POST" }),
+			new Response(""),
+			{},
+			{ cacheKey: "sw-default" },
+		);
+		// clearSession's purge is fire-and-forget; let it settle.
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	};
+
+	await authenticateSession(session);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-first-session" },
+	);
+	await logout();
+
+	await authenticateSession(session);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-second-session" },
+	);
+	const has = t.mock.method(caches, "has");
+	await logout();
+
+	deepEqual(
+		has.mock.calls.map((c) => c.arguments[0]),
+		["sw-second-session"],
+	);
+});

@@ -1521,6 +1521,62 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
+		"strategyPartition: first-sub-response failure aborts siblings and drains their rejections",
+		async (_t) => {
+			// No composite is built, so in-flight siblings must be cancelled and
+			// their later rejections must not escape as unhandledRejection.
+			const { strategyPartition } = await import("../index.js");
+			const unhandled = [];
+			const onUnhandled = (e) => unhandled.push(e);
+			process.on("unhandledRejection", onUnhandled);
+
+			const failingStrategy = () => {
+				throw new Error("first sub failed");
+			};
+			const siblingSignals = [];
+			// Its inline promise rejects only once the sub-request is aborted.
+			const abortRejectingStrategy = (request, event) => {
+				siblingSignals.push(request.signal);
+				event.waitUntil(
+					new Promise((_resolve, reject) => {
+						request.signal.addEventListener("abort", () =>
+							reject(new Error("sibling aborted")),
+						);
+					}),
+				);
+				return new Response("sibling");
+			};
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [
+							{ path: "$1/fail", strategy: failingStrategy },
+							{ path: "$1/sibling", strategy: abortRejectingStrategy },
+						],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const result = await fetchStrategy(event.__request, event, config);
+			await setTimeout(10);
+			process.off("unhandledRejection", onUnhandled);
+
+			strictEqual(result instanceof Error, true);
+			strictEqual(result.message, "first sub failed");
+			strictEqual(siblingSignals.length, 1);
+			strictEqual(siblingSignals[0].aborted, true);
+			strictEqual(unhandled.length, 0);
+		},
+	);
+
+	await t.test(
 		"strategyPartition: non-Response, non-Error mid-stream value is wrapped; rejecting siblings are drained",
 		async (_t) => {
 			// Covers the streamResponses fail() path where the failing value is

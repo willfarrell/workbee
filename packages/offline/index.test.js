@@ -658,6 +658,41 @@ test("offlineMiddleware: idbOpenRequest.onerror should call consoleError", async
 	globalThis.indexedDB = originalIndexedDB;
 });
 
+test("offlineMiddleware: an open error that fires while enqueue waits on the DB rejects it", {
+	timeout: 2000,
+}, async (t) => {
+	t.mock.method(console, "error", () => {});
+	const originalIndexedDB = globalThis.indexedDB;
+	const fakeOpenRequest = {
+		onerror: null,
+		onupgradeneeded: null,
+		onsuccess: null,
+		result: null,
+	};
+	globalThis.indexedDB = { open: () => fakeOpenRequest };
+
+	const { afterNetwork, destroy } = offlineMiddleware({ pollDelay: 0 });
+	const request = new Request(`${domain}/503`, {
+		method: "POST",
+		body: "data",
+	});
+	const response = new Response("", { status: 503 });
+	const waitUntils = [];
+	const event = { waitUntil: (p) => waitUntils.push(p) };
+	// Start enqueueing before the open settles, so it awaits the DB.
+	const pending = afterNetwork(request, response, event, {});
+	await new Promise((resolve) => setTimeout(resolve, 20));
+	fakeOpenRequest.onerror(new Event("error"));
+
+	// Nothing was stored, so the original response comes back, not a 202.
+	strictEqual(await pending, response);
+	const settled = await Promise.allSettled(waitUntils);
+	strictEqual(settled[0].status, "rejected");
+
+	destroy();
+	globalThis.indexedDB = originalIndexedDB;
+});
+
 // *** idbStartTransaction waits for DB to initialize *** //
 test("offlineMiddleware: enqueue waits for DB initialization and succeeds", async (t) => {
 	t.mock.method(console, "error", () => {});
@@ -913,7 +948,7 @@ test("afterNetwork: re-submitting an earlier request after a different one still
 
 // *** enqueue idbObjectStore.add throws (lines 101-110) *** //
 test("afterNetwork: handles idbObjectStore.add error including QuotaExceededError", async (t) => {
-	t.mock.method(console, "error", () => {});
+	const consoleErrorMock = t.mock.method(console, "error", () => {});
 	const postMessageSpy = mock.fn();
 	const originalIndexedDB = globalThis.indexedDB;
 
@@ -1007,6 +1042,11 @@ test("afterNetwork: handles idbObjectStore.add error including QuotaExceededErro
 		(c) => c.arguments[0]?.type === "quota-exceeded",
 	);
 	strictEqual(quotaCalls.length, 1);
+	// The failed write is logged, not swallowed.
+	const quotaErrors = consoleErrorMock.mock.calls.filter(
+		(c) => c.arguments[0]?.name === "QuotaExceededError",
+	);
+	strictEqual(quotaErrors.length, 1);
 
 	destroy();
 	globalThis.indexedDB = originalIndexedDB;
@@ -2323,7 +2363,7 @@ test("idbDeserializeRequest: a text-encoded envelope yields the data string", as
 
 // *** A queued request that cannot be rebuilt must not wedge the queue *** //
 test("postMessageEvent: evicts a queued request that cannot be rebuilt and drains the next", async (t) => {
-	t.mock.method(console, "error", () => {});
+	const consoleErrorMock = t.mock.method(console, "error", () => {});
 	const postMessageSpy = mock.fn();
 	const { afterNetwork, postMessageEvent, destroy } = await createOffline({
 		pollDelay: 0,
@@ -2373,6 +2413,12 @@ test("postMessageEvent: evicts a queued request that cannot be rebuilt and drain
 	);
 	strictEqual(dequeueCalls.length, 1);
 	strictEqual(dequeueCalls[0].arguments[0].url, `${domain}/200`);
+	// The rebuild failure is logged before the entry is dropped.
+	strictEqual(consoleErrorMock.mock.callCount(), 1);
+	strictEqual(
+		consoleErrorMock.mock.calls[0].arguments[0] instanceof TypeError,
+		true,
+	);
 	destroy();
 });
 
