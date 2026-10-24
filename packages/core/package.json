@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/core",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"description": "workbee service worker strategies",
 	"type": "module",
 	"publishConfig": {
