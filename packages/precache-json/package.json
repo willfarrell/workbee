@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/precache-json",
-	"version": "0.5.1",
+	"version": "0.5.2",
 	"description": "JSON precache manifest extractor for workbee service workers",
 	"type": "module",
 	"publishConfig": {
