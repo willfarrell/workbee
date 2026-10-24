@@ -2606,6 +2606,26 @@ test("postMessageEvent: polling stops once the queue is drained, continues while
 	strictEqual(setTimeoutSpy.mock.callCount(), 1);
 });
 
+test("afterNetwork: pollDelay 0 disables polling, so an enqueue arms no timer", async (t) => {
+	const { afterNetwork, destroy } = await createOffline({ pollDelay: 0 });
+	t.after(destroy);
+	// Stubbed, not spied: a real 0ms poll would race other tests and hide the bug.
+	const setTimeoutSpy = t.mock.method(globalThis, "setTimeout", () => 0);
+
+	const waitUntils = [];
+	const result = await afterNetwork(
+		new Request(`${domain}/503`, { method: "POST", body: "data" }),
+		new Response("", { status: 503 }),
+		{ waitUntil: (p) => waitUntils.push(p) },
+		{},
+	);
+	await Promise.all(waitUntils);
+
+	strictEqual(result.status, 202);
+	strictEqual(await countStore(), 1);
+	strictEqual(setTimeoutSpy.mock.callCount(), 0);
+});
+
 test("offlineMiddleware: a queue persisted before the worker restarted drains without a new enqueue", async (t) => {
 	// A restarted worker that is already online never sees an `online` event.
 	Object.defineProperty(navigator, "onLine", {
