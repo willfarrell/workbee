@@ -36,6 +36,25 @@ test("precacheExtractJSON", async (t) => {
 		deepEqual(result, []);
 	});
 
+	await t.test(
+		"throws with the status when the response is not ok",
+		async () => {
+			// A 404/5xx error page must fail the install, not precache nothing.
+			const response = new Response("<h1>Not found</h1>", {
+				status: 404,
+				headers: new Headers({ "Content-Type": "text/html" }),
+			});
+			let caught;
+			try {
+				await precacheExtractJSON(response);
+			} catch (e) {
+				caught = e;
+			}
+			strictEqual(caught instanceof Error, true);
+			strictEqual(/404/.test(caught.message), true);
+		},
+	);
+
 	await t.test("throws when JSON body is not an array", async () => {
 		const response = new Response(JSON.stringify({ routes: ["/a"] }), {
 			headers: new Headers({ "Content-Type": "application/json" }),
@@ -62,6 +81,7 @@ test("precacheExtractJSON", async (t) => {
 			// hold. Without it the leading spaces would fail the match.
 			const routes = [{ path: "/trimmed" }];
 			const fakeResponse = {
+				ok: true,
 				headers: { get: () => "  application/json  " },
 				json: async () => routes,
 			};

@@ -3,15 +3,14 @@
 import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 
 interface InactivityOptions {
-	inactivityAllowedInMin?: number;
-	inactivityEvent?: () => void;
+	/** Defaults to `postMessageToAll`. Receives
+	 * `{ type: "inactivity-activity" }` at most once per second. */
+	postMessage?: (message: { type: "inactivity-activity" }) => Promise<void>;
 }
 
 interface InactivityMiddlewareResult {
 	before: BeforeMiddleware;
 	after: AfterMiddleware;
-	postMessageEvent: () => void;
-	destroy: () => void;
 }
 
 declare function inactivityMiddleware(

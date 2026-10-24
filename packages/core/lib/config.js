@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 import { postMessageToAll, postMessageToFocused } from "./postMessage.js";
 import { compileRoute, pick, resolveMiddlewares } from "./route.js";
-import { strategyNetworkFirst, strategyNetworkOnly } from "./strategies.js";
+import { strategyNetworkOnly, strategyPrecache } from "./strategies.js";
 
 // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
 export const pathPattern = (pattern) => new RegExp(pattern);
@@ -19,7 +19,7 @@ export const defaultConfig = Object.freeze({
 	// { ...Route, routes:Route[] }
 	precache: Object.freeze({
 		routes: Object.freeze([]), // path[]
-		strategy: strategyNetworkFirst,
+		strategy: strategyPrecache,
 		eventType: false,
 		postMessage: postMessageToFocused,
 	}),
@@ -28,6 +28,12 @@ export const defaultConfig = Object.freeze({
 	activate: Object.freeze({
 		eventType: false,
 		postMessage: postMessageToAll,
+		// Extra cache-name prefixes activate may purge (e.g. ["sw-"] when
+		// cachePrefix is versioned as "sw-2-"). Configured prefixes are implied.
+		// Stryker disable next-line ArrayDeclaration: a seeded sentinel prefix only
+		// widens the purge to caches named "Stryker was here…", which no test or
+		// real origin has; the default is otherwise indistinguishable from [].
+		purgePrefixes: Object.freeze([]),
 	}),
 
 	// fetchEvent
@@ -35,8 +41,6 @@ export const defaultConfig = Object.freeze({
 	methods: Object.freeze([]),
 	pathPattern: pathPattern(".*$"),
 	strategy: strategyNetworkOnly,
-	// requestMiddlware: [],
-	// responseMiddleware: [],
 	cacheName: "default",
 
 	// Route[]
@@ -54,6 +58,7 @@ const assertArray = (field, value) => {
 export const compileConfig = (config = {}) => {
 	assertArray("routes", config.routes);
 	assertArray("middlewares", config.middlewares);
+	assertArray("activate.purgePrefixes", config.activate?.purgePrefixes);
 	// precache.routes can be string[], {path}[], or a single string URL —
 	// only the array forms need asserting.
 	if (
@@ -63,7 +68,16 @@ export const compileConfig = (config = {}) => {
 		assertArray("precache.routes", config.precache.routes);
 	}
 	const baseConfig = resolveMiddlewares({ ...defaultConfig, ...config });
-	baseConfig.routes = baseConfig.routes.map((r) => compileRoute(baseConfig, r));
+	baseConfig.routes = baseConfig.routes.map((r, i) => {
+		// Path-only routes are sub-requests (strategyPartition), never matched;
+		// anything else needs a RegExp or findRouteConfig throws on every fetch.
+		if (!(r?.pathPattern instanceof RegExp) && !r?.path) {
+			throw new TypeError(
+				`compileConfig: routes[${i}].pathPattern must be a RegExp (use pathPattern("…"))`,
+			);
+		}
+		return compileRoute(baseConfig, r);
+	});
 	// Resolved once at compile time: an unmatched request may bypass
 	// `respondWith` (see eventFetch) only when the top-level config would do
 	// nothing beyond proxying — the default network-only strategy with no
@@ -85,6 +99,7 @@ export const compileConfig = (config = {}) => {
 		);
 	}
 	baseConfig.precache = precacheConfig;
+	baseConfig.activate = { ...defaultConfig.activate, ...config.activate };
 
 	return baseConfig;
 };

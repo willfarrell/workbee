@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/offline",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "offline workbee service worker middleware",
 	"type": "module",
 	"publishConfig": {
@@ -32,8 +32,8 @@
 		"test": "node --test",
 		"test:mutation": "cd ../.. && MUTATE_PACKAGE=\"$(basename \"$OLDPWD\")\" stryker run"
 	},
-	"dependencies": {
-		"@work-bee/core": "0.4.0"
+	"peerDependencies": {
+		"@work-bee/core": "^0.5.0"
 	},
 	"repository": {
 		"type": "git",
@@ -53,9 +53,6 @@
 		"queue",
 		"network"
 	],
-	"engines": {
-		"node": ">=24"
-	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {

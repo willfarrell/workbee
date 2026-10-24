@@ -1,12 +1,19 @@
 /// <reference lib="webworker" />
 
-import type { RouteConfig, Strategy, WorkBeeConfig } from "@work-bee/core";
+import type {
+	RouteConfig,
+	Strategy,
+	UserConfig,
+	WorkBeeConfig,
+} from "@work-bee/core";
 import {
 	addHeaderToRequest,
 	addHeaderToResponse,
 	authorizationHeader,
+	backgroundFetchSuccessEvent,
 	cacheDeleteExpired,
 	cacheExpired,
+	cacheMatch,
 	cacheOverrideEvent,
 	cachePut,
 	cachesDelete,
@@ -23,15 +30,11 @@ import {
 	fetchInlineStrategy,
 	fetchStrategy,
 	findRouteConfig,
-	getMethod,
 	headersGetAll,
-	headMethod,
 	isRequest,
 	isResponse,
 	newRequest,
 	newResponse,
-	openCaches,
-	optionsMethod,
 	patchMethod,
 	pathPattern,
 	postMessageToAll,
@@ -46,6 +49,7 @@ import {
 	strategyNetworkFirst,
 	strategyNetworkOnly,
 	strategyPartition,
+	strategyPrecache,
 	strategyStaleIfError,
 	strategyStaleWhileRevalidate,
 	strategyStatic,
@@ -67,6 +71,7 @@ describe("types", () => {
 		expect(strategyStaleIfError).type.toBeAssignableTo<Strategy>();
 		expect(strategyIgnore).type.toBeAssignableTo<Strategy>();
 		expect(strategyCacheFirstIgnore).type.toBeAssignableTo<Strategy>();
+		expect(strategyPrecache).type.toBeAssignableTo<Strategy>();
 	});
 
 	test("strategyStatic returns Strategy", () => {
@@ -80,22 +85,46 @@ describe("types", () => {
 
 	test("strategyPartition returns Strategy", () => {
 		expect(strategyPartition({ routes: [] })).type.toBe<Strategy>();
+		expect(
+			strategyPartition({
+				routes: [],
+				headers: { "Content-Type": "text/html" },
+			}),
+		).type.toBe<Strategy>();
+	});
+
+	test("strategyHTMLPartition accepts the compileConfig({ routes: [{ path }] }) pattern", () => {
+		expect(
+			strategyHTMLPartition(
+				compileConfig({
+					routes: [{ path: "$1.header.html" }, { path: "$1.main.html" }],
+					strategy: strategyNetworkFirst,
+				}),
+			),
+		).type.toBe<Strategy>();
+	});
+
+	test("middleware hooks may be false (disabled)", () => {
+		expect(compileConfig).type.toBeCallableWith({
+			middlewares: [{ before: false, after: false }],
+		});
 	});
 });
 
 describe("lib/cache", () => {
-	test("openCaches is Record<string, Cache>", () => {
-		expect(openCaches).type.toBe<Record<string, Cache>>();
+	test("cacheMatch resolves Response | undefined", () => {
+		expect(cacheMatch("key", {} as Request)).type.toBe<
+			Promise<Response | undefined>
+		>();
 	});
 
-	test("cacheOverrideEvent returns handler function", () => {
-		expect(
-			cacheOverrideEvent({} as WorkBeeConfig, { allowedOrigins: ["x"] }),
-		).type.toBe<
-			(messageEvent: {
-				source?: { url?: string } | null;
-				data: { request: string | Request; response: string | Response };
-			}) => Promise<void>
+	test("cacheOverrideEvent handler accepts a real ExtendableMessageEvent", () => {
+		const handler = cacheOverrideEvent({} as WorkBeeConfig, {
+			allowedOrigins: ["x"],
+		});
+		expect(handler).type.toBeCallableWith({} as ExtendableMessageEvent);
+		expect(handler({} as ExtendableMessageEvent)).type.toBe<
+			Promise<void> | undefined
 		>();
 	});
 
@@ -123,6 +152,7 @@ describe("lib/cache", () => {
 	test("cachesDelete returns Promise<boolean[]>", () => {
 		expect(cachesDelete()).type.toBe<Promise<boolean[]>>();
 		expect(cachesDelete(["exclude"])).type.toBe<Promise<boolean[]>>();
+		expect(cachesDelete(["exclude"], ["sw-"])).type.toBe<Promise<boolean[]>>();
 	});
 });
 
@@ -131,8 +161,15 @@ describe("lib/config", () => {
 		expect(pathPattern("/api/*")).type.toBe<RegExp>();
 	});
 
-	test("defaultConfig is WorkBeeConfig", () => {
-		expect(defaultConfig).type.toBe<WorkBeeConfig>();
+	test("defaultConfig is a readonly UserConfig", () => {
+		expect(defaultConfig).type.toBeAssignableTo<UserConfig>();
+		expect(defaultConfig).type.not.toHaveProperty("cacheKey");
+	});
+
+	test("activate config is partial and accepts purgePrefixes", () => {
+		expect(compileConfig).type.toBeCallableWith({
+			activate: { eventType: "activated", purgePrefixes: ["sw-"] },
+		});
 	});
 
 	test("compileConfig returns WorkBeeConfig", () => {
@@ -212,14 +249,22 @@ describe("lib/events", () => {
 		).type.toBe<RouteConfig>();
 	});
 
-	test("fetchInlineStrategy returns Promise<Response>", () => {
+	test("fetchInlineStrategy returns Promise<Response | Error>", () => {
 		expect(
 			fetchInlineStrategy(
 				{} as Request,
 				{} as ExtendableEvent,
 				{} as RouteConfig,
 			),
-		).type.toBe<Promise<Response>>();
+		).type.toBe<Promise<Response | Error>>();
+	});
+
+	test("backgroundFetchSuccessEvent needs the config to route records", () => {
+		expect(backgroundFetchSuccessEvent).type.toBeCallableWith(
+			{} as Event,
+			{} as WorkBeeConfig,
+		);
+		expect(backgroundFetchSuccessEvent).type.not.toBeCallableWith({} as Event);
 	});
 
 	test("fetchStrategy returns Promise<Response | Error>", () => {
@@ -269,6 +314,9 @@ describe("lib/http", () => {
 	test("newResponse returns Response", () => {
 		expect(newResponse({})).type.toBe<Response>();
 		expect(newResponse({ status: 200, body: null })).type.toBe<Response>();
+		expect(
+			newResponse({}, [["Content-Type", "text/html"]]),
+		).type.toBe<Response>();
 	});
 
 	test("addHeaderToResponse returns Response", () => {
@@ -284,13 +332,10 @@ describe("lib/http", () => {
 	});
 
 	test("HTTP method constants", () => {
-		expect(getMethod).type.toBe<"GET">();
 		expect(postMethod).type.toBe<"POST">();
 		expect(putMethod).type.toBe<"PUT">();
 		expect(patchMethod).type.toBe<"PATCH">();
 		expect(deleteMethod).type.toBe<"DELETE">();
-		expect(headMethod).type.toBe<"HEAD">();
-		expect(optionsMethod).type.toBe<"OPTIONS">();
 	});
 
 	test("authorizationHeader constant", () => {

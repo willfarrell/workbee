@@ -1,7 +1,12 @@
-/* global Request Response Headers */
+/* global caches Request Response Headers */
 
 import { deepEqual, strictEqual } from "node:assert";
 import { mock, test } from "node:test";
+import {
+	compileConfig,
+	fetchStrategy,
+	strategyCacheOnly,
+} from "@work-bee/core";
 import {
 	cachesOverride,
 	domain,
@@ -192,7 +197,7 @@ test("sessionMiddleware: before should add Authorization header to matching requ
 
 	// Now before should add token to matching request
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token-123");
 	session.destroy();
 });
@@ -222,7 +227,7 @@ test("sessionMiddleware: before should skip non-matching requests", async (_t) =
 
 	// before should not add token to non-matching request
 	const otherRequest = new Request(`${domain}/public/page`);
-	const result = session.before(otherRequest, {}, {});
+	const result = await session.before(otherRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
 });
@@ -235,7 +240,7 @@ test("sessionMiddleware: before should not set Authorization header when session
 
 	// No authentication happened, sessionToken is empty
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
 });
 
@@ -262,7 +267,7 @@ test("sessionMiddleware: should use default authnGetExpiry when not provided", a
 	);
 
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
 	session.destroy();
 });
@@ -335,7 +340,7 @@ test("sessionMiddleware: afterNetwork should not arm timers or store a token whe
 	strictEqual(authnGetExpiry.mock.callCount(), 0);
 	// No token is stored: a later authz request is not authenticated.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const after = session.before(apiRequest, {}, {});
+	const after = await session.before(apiRequest, {}, {});
 	strictEqual(after.headers.get("Authorization"), null);
 	// The response is still returned (Authorization stripping is a no-op here).
 	strictEqual(result instanceof Response, true);
@@ -402,7 +407,10 @@ test("sessionMiddleware: afterNetwork should skip non-Response values", async (_
 });
 
 // --- Lines 62-67: after middleware tracks sessionCaches and calls activityEvent ---
-test("sessionMiddleware: after should track sessionCaches for authz-matching requests", async (_t) => {
+test("sessionMiddleware: after should track sessionCaches for authz-matching requests", async (t) => {
+	const tracked = await caches.open("sw-session-cache");
+	await tracked.put(`${domain}/api/data`, new Response("user data"));
+	t.after(() => caches.delete("sw-session-cache"));
 	const postMessageMock = mock.fn();
 	const session = sessionMiddleware({
 		authzPathPattern: /\/api\//,
@@ -450,8 +458,9 @@ test("sessionMiddleware: after should track sessionCaches for authz-matching req
 		{ cacheKey: "sw-session-cache" },
 	);
 
-	// caches.delete should have been called with the tracked cache key
-	strictEqual(global.caches.delete.callCount >= 1, true);
+	// Logout purged the authz entry from the tracked cache.
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	strictEqual((await tracked.match(`${domain}/api/data`)) ?? null, null);
 });
 
 test("sessionMiddleware: after should return response for non-matching requests", async (_t) => {
@@ -517,7 +526,41 @@ test("sessionMiddleware: afterNetwork with logout URL should clear session", asy
 
 	// After clearSession, before should not set Authorization header (sessionToken is "")
 	const newApiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(newApiRequest, {}, {});
+	const result = await session.before(newApiRequest, {}, {});
+	strictEqual(result.headers.get("Authorization"), null);
+});
+
+test("sessionMiddleware: a logout that fails at the network still clears the session", async (t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+	await session.afterNetwork(
+		new Request(`${domain}/auth/login`, { method: "POST" }),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	// Offline / aborted: the strategy hands afterNetwork an Error, not a Response.
+	const error = new TypeError("Failed to fetch");
+	const returned = await session.afterNetwork(
+		new Request(`${domain}/auth/logout`, { method: "POST" }),
+		error,
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	strictEqual(returned, error);
+
+	const result = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-default" },
+	);
 	strictEqual(result.headers.get("Authorization"), null);
 });
 
@@ -598,11 +641,14 @@ test("sessionMiddleware: sessionTimer should not call postMessage when expiryEve
 });
 
 // --- Lines 120-126: clearSession deletes tracked caches ---
-test("sessionMiddleware: clearSession should delete all tracked caches", async (_t) => {
-	// Reset global caches.delete mock
-	const cachesDeleteMock = mock.fn();
-	const origDelete = global.caches.delete;
-	global.caches.delete = cachesDeleteMock;
+test("sessionMiddleware: clearSession purges authz entries from every tracked cache", async (t) => {
+	for (const [key, path] of [
+		["sw-cache-a", "/api/data1"],
+		["sw-cache-b", "/api/data2"],
+	]) {
+		await (await caches.open(key)).put(`${domain}${path}`, new Response("x"));
+		t.after(() => caches.delete(key));
+	}
 
 	const postMessageMock = mock.fn();
 	const session = sessionMiddleware({
@@ -656,14 +702,15 @@ test("sessionMiddleware: clearSession should delete all tracked caches", async (
 		{ cacheKey: "sw-default" },
 	);
 
-	// caches.delete should have been called for each tracked cache key
-	strictEqual(cachesDeleteMock.mock.callCount(), 2);
-	const deletedKeys = cachesDeleteMock.mock.calls.map((c) => c.arguments[0]);
-	strictEqual(deletedKeys.includes("sw-cache-a"), true);
-	strictEqual(deletedKeys.includes("sw-cache-b"), true);
-
-	// Restore
-	global.caches.delete = origDelete;
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	const a = await (await caches.open("sw-cache-a")).match(
+		`${domain}/api/data1`,
+	);
+	const b = await (await caches.open("sw-cache-b")).match(
+		`${domain}/api/data2`,
+	);
+	strictEqual(a ?? null, null);
+	strictEqual(b ?? null, null);
 });
 
 // --- Lines 131-140: expiryPromptEvent ---
@@ -835,7 +882,7 @@ test("sessionMiddleware: before should not see sessionToken until expiry resolve
 
 	// before runs between the two awaits — Authorization should NOT be set yet.
 	const midRequest = new Request(`${domain}/api/data`);
-	const mid = session.before(midRequest, {}, {});
+	const mid = await session.before(midRequest, {}, {});
 	strictEqual(mid.headers.get("Authorization"), null);
 
 	// Complete the expiry resolution and full commit.
@@ -844,7 +891,7 @@ test("sessionMiddleware: before should not see sessionToken until expiry resolve
 
 	// Now the token is live.
 	const lateRequest = new Request(`${domain}/api/data`);
-	const late = session.before(lateRequest, {}, {});
+	const late = await session.before(lateRequest, {}, {});
 	strictEqual(late.headers.get("Authorization"), "Bearer pending-token");
 	session.destroy();
 });
@@ -924,7 +971,7 @@ test("sessionMiddleware: before should preserve request URL when adding auth", a
 	);
 
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.url, apiRequest.url);
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
 	session.destroy();
@@ -958,9 +1005,35 @@ test("sessionMiddleware: before should NOT attach token to cross-origin requests
 	// A page-triggered request to a cross-origin URL that still matches the
 	// authzPathPattern must NOT receive the live session token.
 	const attackerRequest = new Request("https://attacker.example/api/steal");
-	const result = session.before(attackerRequest, {}, {});
+	const result = await session.before(attackerRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
+});
+
+test("sessionMiddleware: a cross-origin login response does not start a session", async (t) => {
+	const authnGetToken = mock.fn(() => "attacker-token");
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+
+	await session.afterNetwork(
+		new Request("https://evil.example.com/auth/login", { method: "POST" }),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+
+	strictEqual(authnGetToken.mock.callCount(), 0);
+	const result = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	strictEqual(result.headers.get("Authorization"), null);
 });
 
 test("sessionMiddleware: before should attach token to same-origin requests", async (_t) => {
@@ -975,7 +1048,7 @@ test("sessionMiddleware: before should attach token to same-origin requests", as
 
 	// Same-origin (SW origin === request origin) match still receives the token.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
 	session.destroy();
 });
@@ -993,17 +1066,17 @@ test("sessionMiddleware: before should attach token to allow-listed cross-origin
 
 	// An explicitly allow-listed cross-origin API receives the token.
 	const trustedRequest = new Request("https://api.trusted.example/api/data");
-	const trusted = session.before(trustedRequest, {}, {});
+	const trusted = await session.before(trustedRequest, {}, {});
 	strictEqual(trusted.headers.get("Authorization"), "Bearer test-token");
 
 	// The SW origin is no longer implicitly allowed once an allow-list is given.
 	const sameOriginRequest = new Request(`${domain}/api/data`);
-	const sameOrigin = session.before(sameOriginRequest, {}, {});
+	const sameOrigin = await session.before(sameOriginRequest, {}, {});
 	strictEqual(sameOrigin.headers.get("Authorization"), null);
 
 	// A non-listed cross-origin request is still rejected.
 	const otherRequest = new Request("https://attacker.example/api/steal");
-	const other = session.before(otherRequest, {}, {});
+	const other = await session.before(otherRequest, {}, {});
 	strictEqual(other.headers.get("Authorization"), null);
 	session.destroy();
 });
@@ -1026,13 +1099,13 @@ test("sessionMiddleware: before should attach token to same-origin requests when
 
 	// Same-origin request must still receive the token.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
 
 	// The cross-origin guard (H2) is preserved: a cross-origin request is still
 	// rejected under the same-origin default.
 	const attackerRequest = new Request("https://attacker.example/api/steal");
-	const attacker = session.before(attackerRequest, {}, {});
+	const attacker = await session.before(attackerRequest, {}, {});
 	strictEqual(attacker.headers.get("Authorization"), null);
 	session.destroy();
 });
@@ -1051,7 +1124,7 @@ test("sessionMiddleware: before should NOT attach token when request URL is unpa
 	// absolute URL: `new URL(url)` throws, so the origin cannot be verified and
 	// the token must NOT be attached.
 	const fakeRequest = { url: "relative/api/data" };
-	const result = session.before(fakeRequest, {}, {});
+	const result = await session.before(fakeRequest, {}, {});
 	strictEqual(result, fakeRequest);
 	session.destroy();
 });
@@ -1077,7 +1150,7 @@ test("sessionMiddleware: before should NOT attach token when SW origin cannot be
 	await authenticateSession(session);
 
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
 
@@ -1133,6 +1206,78 @@ test("sessionMiddleware: default authnGetExpiry should expire the session at exa
 	mock.timers.reset();
 });
 
+test("sessionMiddleware: a session longer than 2^31-1 ms expires at its real deadline", async (_t) => {
+	// setTimeout overflows above 2^31-1 ms (~24.8 days) and fires at once.
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+	const thirtyDays = 30 * 24 * 60 * 60 * 1000;
+
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => thirtyDays,
+		expiryEventType: "session-expired",
+		postMessage: postMessageMock,
+	});
+	await session.afterNetwork(
+		new Request(`${domain}/auth/login`, { method: "POST" }),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	const expired = () =>
+		postMessageMock.mock.calls.filter(
+			(c) => c.arguments[0]?.type === "session-expired",
+		).length;
+
+	mock.timers.tick(thirtyDays - 1);
+	strictEqual(expired(), 0);
+	const result = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{},
+	);
+	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+
+	mock.timers.tick(1);
+	strictEqual(expired(), 1);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: a session of exactly 2^31 ms (one past the setTimeout limit) does not expire early", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 2 ** 31,
+		expiryEventType: "session-expired",
+		postMessage: postMessageMock,
+	});
+	await session.afterNetwork(
+		new Request(`${domain}/auth/login`, { method: "POST" }),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	const expired = () =>
+		postMessageMock.mock.calls.filter(
+			(c) => c.arguments[0]?.type === "session-expired",
+		).length;
+
+	mock.timers.tick(2 ** 31 - 1);
+	strictEqual(expired(), 0);
+	mock.timers.tick(1);
+	strictEqual(expired(), 1);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
 // --- Line 73: swOrigin uses optional chaining on `.location` ---
 test("sessionMiddleware: should build (and deny) when self has no location", async (_t) => {
 	// `self` is defined but `self.location` is undefined. The real
@@ -1160,7 +1305,7 @@ test("sessionMiddleware: should build (and deny) when self has no location", asy
 	// With swOrigin undefined and no allow-list, isAllowedOrigin fails closed, so
 	// the matching request does NOT receive the token.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), null);
 	session.destroy();
 
@@ -1304,7 +1449,7 @@ test("sessionMiddleware: afterNetwork non-matching URL should NOT clear the sess
 
 	// Session must still be live: before still attaches the token.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const result = session.before(apiRequest, {}, {});
+	const result = await session.before(apiRequest, {}, {});
 	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
 	session.destroy();
 });
@@ -1336,7 +1481,7 @@ test("sessionMiddleware: afterNetwork without unauthnPathPattern should resolve 
 
 	// Session is untouched: token still attaches.
 	const apiRequest = new Request(`${domain}/api/data`);
-	const attached = session.before(apiRequest, {}, {});
+	const attached = await session.before(apiRequest, {}, {});
 	strictEqual(attached.headers.get("Authorization"), "Bearer test-token");
 	session.destroy();
 });
@@ -1439,4 +1584,404 @@ test("sessionMiddleware: inactivity timer should re-arm and later prompt after a
 
 	session.destroy();
 	mock.timers.reset();
+});
+
+test("sessionMiddleware: inactivity prompt fires 60 s before expiry even after earlier activity", async (_t) => {
+	// The session hard-expires at login + expiry, so the prompt must be due
+	// against that deadline, not against the last activity.
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+	const minute = 60 * 1000;
+
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 10 * minute,
+		inactivityPromptEventType: "inactivity-prompt",
+		postMessage: postMessageMock,
+	});
+	await session.afterNetwork(
+		new Request(`${domain}/auth/login`, { method: "POST" }),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	const prompts = () =>
+		postMessageMock.mock.calls.filter(
+			(c) => c.arguments[0]?.type === "inactivity-prompt",
+		).length;
+
+	mock.timers.tick(2 * minute);
+	session.activityEvent();
+	mock.timers.tick(7 * minute - 1);
+	strictEqual(prompts(), 0);
+	mock.timers.tick(1);
+	strictEqual(prompts(), 1);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: before should attach token without URL.parse (older browsers)", async (t) => {
+	// URL.parse needs Chrome/Firefox 126 / Safari 18; origin checks must not
+	// depend on it.
+	const originalParse = URL.parse;
+	URL.parse = undefined;
+	t.after(() => {
+		URL.parse = originalParse;
+	});
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+	await authenticateSession(session);
+
+	const result = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{},
+	);
+	strictEqual(result.headers.get("Authorization"), "Bearer test-token");
+	session.destroy();
+});
+
+// --- SW restart: the token lived only in memory, but the caches survive ---
+const useRealCachesDelete = (t) => {
+	const origDelete = global.caches.delete;
+	const realDelete = Object.getPrototypeOf(global.caches).delete;
+	// Deletes on a later tick, like real CacheStorage, so a purge that is not
+	// awaited would let the strategy read the stale entry first.
+	const deleteMock = mock.fn(async (key) => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		return realDelete.call(global.caches, key);
+	});
+	global.caches.delete = deleteMock;
+	t.after(() => {
+		global.caches.delete = origDelete;
+	});
+	return deleteMock;
+};
+
+const restartRoute = (session, cacheName) =>
+	compileConfig({
+		routes: [
+			{
+				path: "/api/profile",
+				pathPattern: /\/api\//,
+				cacheName,
+				strategy: strategyCacheOnly,
+				middlewares: [session],
+			},
+		],
+	}).routes[0];
+
+test("sessionMiddleware: a restarted SW purges an authz route's cache before the strategy reads it", async (t) => {
+	useRealCachesDelete(t);
+	const url = `${domain}/api/profile`;
+	const cache = await caches.open("sw-restart-api");
+	await cache.put(url, new Response("previous user"));
+
+	// Fresh instance == SW restarted: no token in memory.
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		postMessage: mock.fn(),
+	});
+	const route = restartRoute(session, "restart-api");
+	const response = await fetchStrategy(
+		new Request(url),
+		{ waitUntil: () => {} },
+		route,
+	);
+
+	// Cache miss (the mock resolves null): not the previous user's response.
+	strictEqual(response, null);
+	const reopened = await caches.open("sw-restart-api");
+	strictEqual(await reopened.match(url), null);
+	session.destroy();
+});
+
+test("sessionMiddleware: a restarted SW purges each authz cache only once", async (t) => {
+	// The purge is for the previous session's leftovers; entries cached after
+	// it (while still unauthenticated) must not be re-purged on every request.
+	t.after(() => caches.delete("sw-once-a"));
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+	const config = { cacheKey: "sw-once-a" };
+	const cache = await caches.open("sw-once-a");
+	await cache.put(`${domain}/api/a`, new Response("previous user"));
+
+	await session.before(new Request(`${domain}/api/a`), {}, config);
+	strictEqual((await cache.match(`${domain}/api/a`)) ?? null, null);
+
+	await cache.put(`${domain}/api/b`, new Response("cached after purge"));
+	await session.before(new Request(`${domain}/api/b`), {}, config);
+	strictEqual(
+		await (await cache.match(`${domain}/api/b`))?.text(),
+		"cached after purge",
+	);
+});
+
+test("sessionMiddleware: before does not purge caches while a session is active", async (t) => {
+	const deleteMock = useRealCachesDelete(t);
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+	await authenticateSession(session);
+
+	await session.before(
+		new Request(`${domain}/api/a`),
+		{},
+		{
+			cacheKey: "sw-active",
+		},
+	);
+
+	strictEqual(deleteMock.mock.callCount(), 0);
+	session.destroy();
+});
+
+test("sessionMiddleware: before does not purge caches of non-authz routes", async (t) => {
+	const deleteMock = useRealCachesDelete(t);
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		postMessage: mock.fn(),
+	});
+
+	const request = new Request(`${domain}/public/page`);
+	const result = await session.before(request, {}, { cacheKey: "sw-public" });
+
+	strictEqual(result, request);
+	strictEqual(deleteMock.mock.callCount(), 0);
+	session.destroy();
+});
+
+// --- Purges are scoped to authz entries, not whole shared caches ---
+const seedSharedCache = async (cacheKey) => {
+	const cache = await caches.open(cacheKey);
+	await cache.put(`${domain}/api/profile`, new Response("previous user"));
+	await cache.put(`${domain}/public/app.css`, new Response("body{}"));
+	return async () => ({
+		profile: await (await caches.open(cacheKey)).match(`${domain}/api/profile`),
+		css: await (await caches.open(cacheKey)).match(`${domain}/public/app.css`),
+	});
+};
+
+test("sessionMiddleware: a restarted SW purges only authz entries from a shared cache", async (t) => {
+	const read = await seedSharedCache("sw-shared-restart");
+	t.after(() => caches.delete("sw-shared-restart"));
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+
+	await session.before(
+		new Request(`${domain}/api/profile`),
+		{},
+		{
+			cacheKey: "sw-shared-restart",
+		},
+	);
+
+	const { profile, css } = await read();
+	strictEqual(profile ?? null, null);
+	strictEqual(await css?.text(), "body{}");
+});
+
+test("sessionMiddleware: logout purges only authz entries from a shared cache", async (t) => {
+	const read = await seedSharedCache("sw-shared-logout");
+	t.after(() => caches.delete("sw-shared-logout"));
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+	await authenticateSession(session);
+	const config = { cacheKey: "sw-shared-logout" };
+	const apiRequest = new Request(`${domain}/api/profile`);
+	await session.before(apiRequest, {}, config);
+	await session.after(apiRequest, new Response(""), {}, config);
+
+	await session.afterNetwork(
+		new Request(`${domain}/auth/logout`, { method: "POST" }),
+		new Response(""),
+		{},
+		config,
+	);
+	// clearSession's purge is fire-and-forget; let it settle.
+	await new Promise((resolve) => setTimeout(resolve, 10));
+
+	const { profile, css } = await read();
+	strictEqual(profile ?? null, null);
+	strictEqual(await css?.text(), "body{}");
+});
+
+test("sessionMiddleware: a restart purge never creates the cache it checks", async (t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+
+	await session.before(
+		new Request(`${domain}/api/profile`),
+		{},
+		{
+			cacheKey: "sw-never-created",
+		},
+	);
+
+	strictEqual((await caches.keys()).includes("sw-never-created"), false);
+});
+
+test("sessionMiddleware: an authz response counts as activity and defers the inactivity prompt", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 120000,
+		inactivityPromptEventType: "inactivity-prompt",
+		postMessage: postMessageMock,
+	});
+	await authenticateSession(session);
+
+	// The prompt is due at 60000; an authz round-trip just before it is activity.
+	mock.timers.tick(59000);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	mock.timers.tick(1000);
+
+	const promptCalls = postMessageMock.mock.calls.filter(
+		(c) => c.arguments[0]?.type === "inactivity-prompt",
+	);
+	strictEqual(promptCalls.length, 0);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: a re-login replaces the previous session's expiry timer", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const expiries = [5000, 600000];
+	const postMessageMock = mock.fn();
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => expiries.shift(),
+		expiryEventType: "session-expired",
+		postMessage: postMessageMock,
+	});
+	await authenticateSession(session);
+	mock.timers.tick(1000);
+	await authenticateSession(session);
+
+	// The first session's deadline passes; only the second one is live.
+	mock.timers.tick(5000);
+
+	const expiredCalls = postMessageMock.mock.calls.filter(
+		(c) => c.arguments[0]?.type === "session-expired",
+	);
+	strictEqual(expiredCalls.length, 0);
+	const request = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-default" },
+	);
+	strictEqual(request.headers.get("Authorization"), "Bearer test-token");
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: an expired session stops attaching the token", async (_t) => {
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: 0 });
+
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 5000,
+		postMessage: mock.fn(),
+	});
+	await authenticateSession(session);
+	mock.timers.tick(5001);
+
+	const request = await session.before(
+		new Request(`${domain}/api/data`),
+		{},
+		{ cacheKey: "sw-expired-session" },
+	);
+	strictEqual(request.headers.get("Authorization"), null);
+
+	session.destroy();
+	mock.timers.reset();
+});
+
+test("sessionMiddleware: a logout only purges caches written since the previous logout", async (t) => {
+	const session = sessionMiddleware({
+		authzPathPattern: /\/api\//,
+		authnPathPattern: /\/auth\/login/,
+		unauthnPathPattern: /\/auth\/logout/,
+		authnGetToken: () => "test-token",
+		authnGetExpiry: () => 60000,
+		postMessage: mock.fn(),
+	});
+	t.after(session.destroy);
+	const logout = async () => {
+		await session.afterNetwork(
+			new Request(`${domain}/auth/logout`, { method: "POST" }),
+			new Response(""),
+			{},
+			{ cacheKey: "sw-default" },
+		);
+		// clearSession's purge is fire-and-forget; let it settle.
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	};
+
+	await authenticateSession(session);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-first-session" },
+	);
+	await logout();
+
+	await authenticateSession(session);
+	session.after(
+		new Request(`${domain}/api/data`),
+		new Response("{}"),
+		{},
+		{ cacheKey: "sw-second-session" },
+	);
+	const has = t.mock.method(caches, "has");
+	await logout();
+
+	deepEqual(
+		has.mock.calls.map((c) => c.arguments[0]),
+		["sw-second-session"],
+	);
 });

@@ -222,6 +222,22 @@ test("loggerMiddleware: Should not redact non-matching header keys", async (t) =
 	equal(detail.requestHeaders["x-safe"], "visible");
 });
 
+test("loggerMiddleware: default logger logs headers as-is when redactHeaders is undefined", async (t) => {
+	const logMock = t.mock.method(console, "log", () => {});
+	const request = new Request(`${domain}/200`, {
+		method: "GET",
+		headers: { Authorization: "Bearer secret-token" },
+	});
+
+	const logger = loggerMiddleware({ redactHeaders: undefined });
+	const { event, config } = setupMocks(undefined, `${domain}/200`);
+	await logger.before(request, event, config);
+
+	equal(logMock.mock.callCount(), 1);
+	const detail = logMock.mock.calls[0].arguments[3];
+	equal(detail.requestHeaders.authorization, "Bearer secret-token");
+});
+
 test("loggerMiddleware: Should disable before when runOnBefore is false", async (_t) => {
 	const logger = loggerMiddleware({
 		runOnBefore: false,
@@ -404,4 +420,43 @@ test("loggerMiddleware: Default logger with no redactHeaders should skip redacti
 	const { event, config } = setupMocks(undefined, `${domain}/200`);
 	await logger.before(request, event, config);
 	await logger.after(request, response, event, config);
+});
+
+test("loggerMiddleware.before: A throwing logger is reported and the request passes through", async (t) => {
+	const errorMock = t.mock.method(console, "error", () => {});
+	const request = new Request(`${domain}/200`, { method: "GET" });
+	const error = new Error("logger broke");
+	const logger = loggerMiddleware({
+		logger: () => {
+			throw error;
+		},
+	});
+	const { event, config } = setupMocks(undefined, `${domain}/200`);
+
+	const outputRequest = await logger.before(request, event, config);
+
+	equal(outputRequest, request);
+	equal(errorMock.mock.callCount(), 1);
+	equal(errorMock.mock.calls[0].arguments.includes(error), true);
+	equal(errorMock.mock.calls[0].arguments[0], "loggerMiddleware");
+});
+
+test("loggerMiddleware.after: A throwing logger is reported and the response passes through", async (t) => {
+	const errorMock = t.mock.method(console, "error", () => {});
+	const request = new Request(`${domain}/200`, { method: "GET" });
+	const response = await fetch(request);
+	const error = new Error("logger broke");
+	const logger = loggerMiddleware({
+		logger: () => {
+			throw error;
+		},
+	});
+	const { event, config } = setupMocks(undefined, `${domain}/200`);
+
+	const outputResponse = await logger.after(request, response, event, config);
+
+	equal(outputResponse, response);
+	equal(errorMock.mock.callCount(), 1);
+	equal(errorMock.mock.calls[0].arguments.includes(error), true);
+	equal(errorMock.mock.calls[0].arguments[0], "loggerMiddleware");
 });

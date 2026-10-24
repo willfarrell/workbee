@@ -5,8 +5,8 @@ import * as core from "./index.js";
 
 // cache.js
 test("core: exports cache utilities", () => {
-	ok("openCaches" in core);
 	ok("cacheOverrideEvent" in core);
+	ok("cacheMatch" in core);
 	ok("cachePut" in core);
 	ok("cacheExpired" in core);
 	ok("cacheDeleteExpired" in core);
@@ -50,13 +50,13 @@ test("core: exports http utilities", () => {
 	ok("newResponse" in core);
 	ok("addHeaderToResponse" in core);
 	ok("deleteHeaderFromResponse" in core);
-	ok("getMethod" in core);
+	ok(!("getMethod" in core));
 	ok("postMethod" in core);
 	ok("putMethod" in core);
 	ok("patchMethod" in core);
 	ok("deleteMethod" in core);
-	ok("headMethod" in core);
-	ok("optionsMethod" in core);
+	ok(!("headMethod" in core));
+	ok(!("optionsMethod" in core));
 	ok("authorizationHeader" in core);
 });
 
@@ -71,6 +71,7 @@ test("core: exports strategy utilities", () => {
 	ok("strategyNetworkOnly" in core);
 	ok("strategyCacheOnly" in core);
 	ok("strategyNetworkFirst" in core);
+	ok("strategyPrecache" in core);
 	ok("strategyCacheFirst" in core);
 	ok("strategyStaleWhileRevalidate" in core);
 	ok("strategyStaleIfError" in core);

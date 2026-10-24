@@ -10,7 +10,8 @@ interface LoggerOptions {
 	logger?: (
 		when: string,
 		request: Request,
-		response: Response | undefined,
+		/** `undefined` on before-hooks; an `Error` when the strategy failed. */
+		response: Response | Error | undefined,
 		event: ExtendableEvent,
 		config: RouteConfig,
 		redactHeaders: string[],

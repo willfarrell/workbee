@@ -3,9 +3,16 @@
 /* global ReadableStream Headers Request */
 
 import { applyExpires, cacheExpired, cacheMatch, cachePut } from "./cache.js";
+import { cacheable, noCacheRegExp } from "./cacheable.js";
 import { consoleError } from "./console.js";
 import { fetchInlineStrategy } from "./events.js";
-import { isResponse, newRequest, newResponse, urlRemoveHash } from "./http.js";
+import {
+	deleteHeaderFromResponse,
+	isResponse,
+	newRequest,
+	newResponse,
+	urlRemoveHash,
+} from "./http.js";
 
 export const strategyNetworkOnly = async (request, event, config) => {
 	for (const beforeNetwork of config.beforeNetwork) {
@@ -34,72 +41,78 @@ export const strategyCacheOnly = async (request, _event, config) => {
 	throw response;
 };
 
+// Network, then store a copy when HTTP freshness allows it. `no-cache` means
+// every use must revalidate, which a cache hit here never does.
+const networkAndCache = async (request, event, config) => {
+	let response = await strategyNetworkOnly(request, event, config);
+	if (
+		cacheable(request, response) &&
+		!noCacheRegExp.test(response.headers.get("Cache-Control"))
+	) {
+		response = applyExpires(response);
+		if (response.headers.get("Expires")) {
+			// Clone EAGERLY, not inside cachePut: cachePut awaits caches.open() before
+			// it clones, and by then the browser may already be streaming this
+			// response to the page -- clone() throws on a disturbed body. The extra
+			// tee is the price of that guarantee; do not "optimize" it away.
+			event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
+		}
+	}
+	return response;
+};
+
+const cachedOrThrow = async (error, request, config) => {
+	const cachedResponse = await cacheMatch(config.cacheKey, request);
+	if (isResponse(cachedResponse)) return cachedResponse;
+	throw error;
+};
+
+// Install-time default: always store. Precache freshness is owned by the SW
+// version (cachePrefix), not by the asset's Cache-Control, so the stored copy
+// drops Expires; cacheExpired would otherwise mark it stale.
+export const strategyPrecache = async (request, event, config) => {
+	const response = await strategyNetworkOnly(request, event, config);
+	if (cacheable(request, response)) {
+		event.waitUntil(
+			cachePut(
+				config.cacheKey,
+				request,
+				// Clones the body synchronously, like the eager clone in networkAndCache.
+				deleteHeaderFromResponse(response, "Expires"),
+			),
+		);
+	}
+	return response;
+};
+
 export const strategyNetworkFirst = async (request, event, config) => {
-	let response;
 	try {
-		response = await strategyNetworkOnly(request, event, config);
-		if (response.ok) {
-			response = applyExpires(response);
-			if (response.headers.get("Expires")) {
-				// Clone EAGERLY, not inside cachePut: cachePut awaits getCache() before
-				// it clones, and by then the browser may already be streaming this
-				// response to the page -- clone() throws on a disturbed body. The extra
-				// tee is the price of that guarantee; do not "optimize" it away.
-				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
-			}
-		}
+		return await networkAndCache(request, event, config);
 	} catch (e) {
-		const cachedResponse = await cacheMatch(config.cacheKey, request);
-		if (isResponse(cachedResponse)) {
-			return cachedResponse;
-		}
-		response = e;
+		return cachedOrThrow(e, request, config);
 	}
-	if (isResponse(response)) {
-		return response;
-	}
-	throw response;
 };
 
 export const strategyStaleIfError = async (request, event, config) => {
 	let response;
 	try {
-		response = await strategyNetworkOnly(request, event, config);
-		if (response.ok) {
-			response = applyExpires(response);
-			if (response.headers.get("Expires")) {
-				// Clone EAGERLY, not inside cachePut: cachePut awaits getCache() before
-				// it clones, and by then the browser may already be streaming this
-				// response to the page -- clone() throws on a disturbed body. The extra
-				// tee is the price of that guarantee; do not "optimize" it away.
-				event.waitUntil(cachePut(config.cacheKey, request, response.clone()));
-			}
-		}
-		// Stryker disable next-line ConditionalExpression: `response` here always
-		// comes from strategyNetworkOnly, which only ever returns a real Response
-		// (it throws otherwise). A Response's status is constrained by the platform
-		// to 200-599, so `response.status <= 599` is always true and the
-		// `... && true` mutant is behaviourally identical — no constructible
-		// Response can have status > 599 to distinguish it. The EqualityOperator
-		// mutants on this line (500<=…, …<=599) remain enabled and are killed by
-		// the status===500 and status===599 boundary tests.
-		if (500 <= response.status && response.status <= 599) {
-			const cachedResponse = await cacheMatch(config.cacheKey, request);
-			if (isResponse(cachedResponse)) {
-				return cachedResponse;
-			}
-		}
+		response = await networkAndCache(request, event, config);
 	} catch (e) {
+		return cachedOrThrow(e, request, config);
+	}
+	// Stryker disable next-line ConditionalExpression: `response` here always
+	// comes from strategyNetworkOnly, which only ever returns a real Response
+	// (it throws otherwise). A Response's status is constrained by the platform
+	// to 200-599, so `response.status <= 599` is always true and the
+	// `... && true` mutant is behaviourally identical — no constructible
+	// Response can have status > 599 to distinguish it. The EqualityOperator
+	// mutants on this line (500<=…, …<=599) remain enabled and are killed by
+	// the status===500 and status===599 boundary tests.
+	if (500 <= response.status && response.status <= 599) {
 		const cachedResponse = await cacheMatch(config.cacheKey, request);
-		if (isResponse(cachedResponse)) {
-			return cachedResponse;
-		}
-		response = e;
+		if (isResponse(cachedResponse)) return cachedResponse;
 	}
-	if (isResponse(response)) {
-		return response;
-	}
-	throw response;
+	return response;
 };
 
 export const strategyCacheFirst = async (request, event, config) => {
@@ -175,6 +188,9 @@ const fragmentHeaders = [
 	"last-modified",
 ];
 
+// Fetch spec "null body status"; Response() throws when given a body with one.
+const nullBodyStatuses = [101, 103, 204, 205, 304];
+
 const compositeHeaders = (source) => {
 	const headers = new Headers(source);
 	for (const name of fragmentHeaders) {
@@ -185,7 +201,7 @@ const compositeHeaders = (source) => {
 
 // { makeRequest, routes, strategy, headers, ... }
 export const strategyPartition = (options = {}) => {
-	return async (request, event, config) => {
+	const strategy = async (request, event, config) => {
 		const abortController = new AbortController();
 		const responses = options.routes.map((routeConfig) => {
 			let subRequest = request;
@@ -203,6 +219,7 @@ export const strategyPartition = (options = {}) => {
 		// can't build a meaningful composite, so cancel the rest and surface
 		// the error upfront instead of returning a 200-with-broken-stream.
 		let headers = options.headers;
+		let init = {};
 		if (headers === undefined) {
 			let first;
 			try {
@@ -221,6 +238,12 @@ export const strategyPartition = (options = {}) => {
 			// Only strip when inheriting from a sub-response; `options.headers`
 			// is the caller explicitly describing the composite.
 			headers = compositeHeaders(first.headers);
+			// Headers like Location or WWW-Authenticate only make sense with the
+			// status they came with. Opaque (0) and null-body statuses can't wrap
+			// the composite stream, so those keep the default 200.
+			if (first.status && !nullBodyStatuses.includes(first.status)) {
+				init = { status: first.status, statusText: first.statusText };
+			}
 			responses[0] = Promise.resolve(first);
 		}
 
@@ -228,8 +251,11 @@ export const strategyPartition = (options = {}) => {
 			abortController.abort(),
 		);
 		event.waitUntil(streamDeferred);
-		return newResponse({ body }, headers);
+		return newResponse({ ...init, body }, headers);
 	};
+	// Exposed so eventActivate keeps the sub-routes' caches.
+	strategy.routes = options.routes;
+	return strategy;
 };
 
 const streamResponses = (responses, onCancel) => {

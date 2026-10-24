@@ -7,6 +7,18 @@
     <h1>ServiceWorker</h1>
 
     <script type="module">
+      import inactivityClient from '/packages/inactivity/client.js'
+
+      // Short window so the e2e suite can drive it. DOM activity and the
+      // worker's request notifications both reset the countdown.
+      inactivityClient({
+        inactivityAllowedInMin: 0.05, // 3s
+        inactivityEvent: () => {
+          console.log('session inactive')
+          window.dispatchEvent(new Event('inactive'))
+        }
+      })
+
       if ('serviceWorker' in navigator) {
               const sw = navigator.serviceWorker
               await sw.register('/sw.js', {
@@ -19,8 +31,7 @@
                 'offline-enqueue': (data) =>
                   console.log('queued while offline', data),
                 'offline-dequeue': (data) =>
-                  console.log('replayed queued request', data),
-                inactive: () => console.log('session inactive')
+                  console.log('replayed queued request', data)
               }
               sw.addEventListener('message', (event) => {
                 if (event.origin !== location.origin) return

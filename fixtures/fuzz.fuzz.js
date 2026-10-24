@@ -183,7 +183,11 @@ test("fuzz: deleteHeaderFromResponse removes the header", () => {
 test("fuzz: cacheExpired with arbitrary dates", () => {
 	fc.assert(
 		fc.property(
-			fc.date({ min: new Date("2000-01-01"), max: new Date("2050-01-01") }),
+			fc.date({
+				min: new Date("2000-01-01"),
+				max: new Date("2050-01-01"),
+				noInvalidDate: true,
+			}),
 			(date) => {
 				const response = new Response("", {
 					headers: new Headers({ Expires: date.toUTCString() }),

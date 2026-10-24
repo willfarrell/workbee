@@ -1,6 +1,6 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-import { consoleLog, headersGetAll } from "@work-bee/core";
+import { consoleError, consoleLog, headersGetAll } from "@work-bee/core";
 
 const defaultRedactHeaders = [
 	"authorization",
@@ -47,16 +47,25 @@ const defaults = {
 const loggerMiddleware = (opts = {}) => {
 	const options = { ...defaults, ...opts };
 
-	const beforeMiddleware = (when) => {
-		return (request, event, config) => {
+	// A broken logger must not fail the request it is observing.
+	const log = (when, request, response, event, config) => {
+		try {
 			options.logger(
 				when,
 				request,
-				undefined,
+				response,
 				event,
 				config,
 				options.redactHeaders,
 			);
+		} catch (e) {
+			consoleError("loggerMiddleware", when, e);
+		}
+	};
+
+	const beforeMiddleware = (when) => {
+		return (request, event, config) => {
+			log(when, request, undefined, event, config);
 			return request;
 		};
 	};
@@ -66,14 +75,7 @@ const loggerMiddleware = (opts = {}) => {
 
 	const afterMiddleware = (when) => {
 		return (request, response, event, config) => {
-			options.logger(
-				when,
-				request,
-				response,
-				event,
-				config,
-				options.redactHeaders,
-			);
+			log(when, request, response, event, config);
 			return response;
 		};
 	};

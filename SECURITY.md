@@ -10,7 +10,7 @@ This document outlines security procedures and general policies for the WorkBee 
 ## Security Goals
 Our goal is to ensure OSS follows secure design principles and meets security best practices as outlined by the following [OWASP ASVS v5.0 Level 3](https://github.com/OWASP/ASVS/tree/master/5.0/en).
 
-Standards are evaluated using automated scans (Linting, Unit tests, SAST, SCA, DAST, Perf) and manual self-audits. 3rd party audits are welcome.
+Standards are evaluated using automated scans (Linting, Unit tests, Mutation tests, SAST, SCA, DAST, Benchmarks) and manual self-audits. 3rd party audits are welcome.
 
 ## Secure design principles
 
@@ -33,8 +33,10 @@ This policy applies to:
 - `@work-bee/inactivity`
 - `@work-bee/logger`
 - `@work-bee/offline`
+- `@work-bee/precache-json`
 - `@work-bee/save-data`
 - `@work-bee/session`
+- The documentation website, https://workbee.js.org (`websites/workbee.js.org`)
 
 ## Reporting a Vulnerability
 
@@ -43,7 +45,7 @@ seriously. Thank you for improving the security of our open source
 software. We appreciate your efforts and responsible disclosure and will
 make every effort to acknowledge your contributions.
 
-Report security vulnerabilities by emailing the lead maintainer at:
+Report security vulnerabilities through [GitHub private vulnerability reporting](https://github.com/willfarrell/workbee/security/advisories/new), or by emailing the lead maintainer at:
 ```
 willfarrell@proton.me
 ```

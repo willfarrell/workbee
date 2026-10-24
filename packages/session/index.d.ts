@@ -4,8 +4,12 @@ import type { AfterMiddleware, BeforeMiddleware } from "@work-bee/core";
 
 interface SessionOptions {
 	authnMethods?: string[];
+	/** Only read from the SW origin or `authzAllowedOrigins`. */
 	authnPathPattern?: RegExp;
-	authnGetToken?: (response: Response) => string | Promise<string>;
+	/** Return a falsy value when the response carries no token. */
+	authnGetToken?: (
+		response: Response,
+	) => string | undefined | Promise<string | undefined>;
 	authnGetExpiry?: (
 		response: Response,
 		token: string,
@@ -13,8 +17,10 @@ interface SessionOptions {
 	authzPathPattern?: RegExp;
 	authzSetToken?: (request: Request, token: string) => Request;
 	authzAllowedOrigins?: string[];
+	/** Posted 60 s before expiry, once 60 s have passed without activity. */
 	inactivityPromptEventType?: string;
 	postMessage?: (message: any) => Promise<void>;
+	/** Clears the session on any outcome, network errors included. */
 	unauthnPathPattern?: RegExp;
 	expiryEventType?: string;
 }
@@ -33,7 +39,9 @@ declare function sessionMiddleware(
 
 export default sessionMiddleware;
 
-export declare function getTokenAuthorization(response: Response): string;
+export declare function getTokenAuthorization(
+	response: Response,
+): string | undefined;
 
 export declare function getExpiryJWT(response: Response, token: string): number;
 

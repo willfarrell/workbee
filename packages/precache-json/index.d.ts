@@ -4,6 +4,7 @@
 /**
  * Extracts a precache route manifest from a JSON response.
  *
+ * Throws an `Error` naming the status when `response.ok` is false.
  * Returns `[]` when the response is not `application/json`. Throws a
  * `TypeError` when the body parses to something other than an array.
  *

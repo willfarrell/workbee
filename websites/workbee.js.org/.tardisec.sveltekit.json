@@ -14,6 +14,7 @@
 				"report-uri": [
 					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
 				],
+				"require-trusted-types-for": ["script"],
 				"script-src": ["self", "report-sample", "'report-sha256'"],
 				"script-src-attr": ["report-sample", "'report-sha256'"],
 				"style-src": ["self", "report-sample", "'report-sha256'"],
@@ -26,11 +27,14 @@
 				"default-src": ["report-sample", "'report-sha256'"],
 				"form-action": ["none"],
 				"frame-ancestors": ["none"],
+				"img-src": ["self"],
 				"report-to": ["default"],
 				"report-uri": [
 					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
 				],
-				"require-trusted-types-for": ["script"]
+				"require-trusted-types-for": ["script"],
+				"script-src-elem": ["self", "report-sample", "'report-sha256'"],
+				"style-src-elem": ["self", "report-sample", "'report-sha256'"]
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 {
 	"name": "@work-bee/precache-json",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "JSON precache manifest extractor for workbee service workers",
 	"type": "module",
 	"publishConfig": {
@@ -43,9 +43,6 @@
 		"json",
 		"manifest"
 	],
-	"engines": {
-		"node": ">=24"
-	},
 	"author": "willfarrell",
 	"license": "MIT",
 	"funding": {

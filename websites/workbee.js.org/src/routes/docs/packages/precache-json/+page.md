@@ -53,6 +53,7 @@ same route pipeline as inline `precache.routes`.
 
 | Response | Result |
 |----------|--------|
+| Status outside 200-299 (`response.ok` is false) | throws `Error` naming the status, so the install fails |
 | `Content-Type: application/json` (any parameters, e.g. `; charset=utf-8`) with an array body | the parsed array |
 | Any other `Content-Type`, or no `Content-Type` | `[]` — nothing is precached |
 | `application/json` with a non-array body | throws `TypeError` naming the received type |

@@ -1,8 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+// These tests fulfil the ServiceWorker's own requests with context.route();
+// Playwright only intercepts ServiceWorker network traffic in Chromium.
+const SW_ROUTE_ONLY_CHROMIUM =
+	"Playwright routes ServiceWorker-originated requests only in Chromium";
+
 const localhost = "/index.html";
 
-test("Should register ServiceWorker", async ({ browser }) => {
+test("Should register ServiceWorker", async ({ browserName, browser }) => {
+	test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 	const context = await browser.newContext();
 
 	await context.route("/test", async (route) => {

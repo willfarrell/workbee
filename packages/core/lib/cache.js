@@ -1,87 +1,76 @@
 // Copyright 2026 will Farrell, and workbee contributors.
 // SPDX-License-Identifier: MIT
-/* global caches */
+/* global caches Headers Request */
 
 import { consoleError } from "./console.js";
-import { addHeaderToResponse } from "./http.js";
+import { addHeaderToResponse, deleteHeaderFromResponse } from "./http.js";
 
-// Literal per-directive matchers — boundary-anchored so "max-age" can't match
-// inside another token, and literal (not `new RegExp(...)`) to avoid a dynamic-
-// RegExp/ReDoS SAST finding. Only two directives exist, so no constructor needed.
-const sMaxAgeRegExp = /(?:^|[,\s])s-maxage=([0-9]+)/;
-const maxAgeRegExp = /(?:^|[,\s])max-age=([0-9]+)/;
+// Boundary-anchored so "max-age" can't match inside another token,
+// case-insensitive as directives are (RFC 9111 §5.2), and literal
+// (not `new RegExp(...)`) to avoid a dynamic-RegExp/ReDoS SAST finding.
+// s-maxage is deliberately not read: it targets shared caches (RFC 9111
+// §5.2.2.10) and a ServiceWorker cache is private.
+const maxAgeRegExp = /(?:^|[,\s])max-age=([0-9]+)/i;
 
 export const applyExpires = (response) => {
-	if (response.headers.get("Expires")) return response;
-	const cacheControl = response.headers.get("Cache-Control");
-	// Precedence: s-maxage is the shared-cache override (RFC 9111 §5.2.2.10), so
-	// when both are present it wins regardless of order; max-age is the fallback.
-	const match =
-		cacheControl?.match(sMaxAgeRegExp) ?? cacheControl?.match(maxAgeRegExp);
-	const maxAge = match ? Number.parseInt(match[1], 10) : 0;
-	if (!maxAge) return response;
-	const dateHeader = response.headers.get("Date");
-	const parsedDate = dateHeader ? new Date(dateHeader).getTime() : NaN;
-	const responseTime = Number.isFinite(parsedDate) ? parsedDate : Date.now();
+	const match = response.headers.get("Cache-Control")?.match(maxAgeRegExp);
+	// No max-age: an existing Expires (if any) stands on its own.
+	if (!match) return response;
+	// Freshness left when it reached us (RFC 9111 §4.2.3): current age is the
+	// larger of Age and the time since Date, never negative (origin clock skew).
+	const now = Date.now();
+	const age = (Number.parseInt(response.headers.get("Age"), 10) || 0) * 1000;
+	const apparentAge = Math.max(
+		0,
+		// Missing/unparseable Date is NaN, so no apparent age.
+		now - Date.parse(response.headers.get("Date")) || 0,
+	);
+	const freshness =
+		Number.parseInt(match[1], 10) * 1000 - Math.max(apparentAge, age);
+	// max-age overrides Expires (RFC 9111 §5.3), so an already-stale response
+	// must not keep an Expires that would make it look fresh.
+	if (freshness <= 0) {
+		return response.headers.has("Expires")
+			? deleteHeaderFromResponse(response, "Expires")
+			: response;
+	}
 	return addHeaderToResponse(
 		response,
 		"Expires",
 		// HTTP-date format (RFC 9110 §5.6.7); `.toString()` is not a valid date.
-		new Date(responseTime + maxAge * 1000).toUTCString(),
+		new Date(now + freshness).toUTCString(),
 	);
 };
 
-export const openCaches = {};
-const inFlightOpens = {};
+// `caches.match` with a cacheName resolves undefined for a missing cache
+// instead of creating it, so reads need no open-handle bookkeeping.
+export const cacheMatch = (cacheKey, request) =>
+	caches.match(request, { cacheName: cacheKey });
 
-const getCache = async (cacheKey) => {
-	// A caller outside cachesDelete() may have dropped this cache from the
-	// CacheStorage; detect the drift and reopen instead of handing back a
-	// stale Cache reference whose writes land nowhere.
-	if (openCaches[cacheKey] && (await caches.has(cacheKey))) {
-		return openCaches[cacheKey];
-	}
-	delete openCaches[cacheKey];
-	inFlightOpens[cacheKey] ??= caches
-		.open(cacheKey)
-		.then((cache) => {
-			openCaches[cacheKey] = cache;
-			delete inFlightOpens[cacheKey];
-			return cache;
-		})
-		// Clear the in-flight slot on rejection too; otherwise a transient
-		// caches.open() failure leaves a rejected promise cached here forever,
-		// wedging every future read/write for this cacheKey.
-		.catch((e) => {
-			delete inFlightOpens[cacheKey];
-			throw e;
-		});
-	return inFlightOpens[cacheKey];
-};
+const credentialHeaders = ["authorization", "cookie"];
 
-export const cacheMatch = async (cacheKey, request) => {
-	const cache = openCaches[cacheKey];
-	if (cache) {
-		// Reads sit on the response critical path, so validate the open handle
-		// in parallel with the speculative read instead of paying a serial
-		// `caches.has()` round-trip on every hit. The read result is only
-		// returned when the cache still exists; otherwise fall through to
-		// getCache(), which drops the stale handle and reopens.
-		const [exists, response] = await Promise.all([
-			caches.has(cacheKey),
-			cache.match(request),
-		]);
-		if (exists) return response;
+// Entries are keyed by URL (a GET key even for other methods, which put()
+// would reject), plus only the request headers the response Vary's on so the
+// Vary check can match later. Credentials are never persisted in the key.
+const cacheKeyRequest = (request, response) => {
+	const vary = response.headers.get("Vary");
+	if (!vary) return request.url;
+	const headers = new Headers();
+	for (const name of vary.split(",")) {
+		const header = name.trim().toLowerCase();
+		const value = request.headers.get(header);
+		if (value !== null && !credentialHeaders.includes(header)) {
+			headers.set(header, value);
+		}
 	}
-	const freshCache = await getCache(cacheKey);
-	return freshCache.match(request);
+	return new Request(request.url, { headers });
 };
 
 export const cachePut = async (cacheKey, request, response, retry = 0) => {
-	const cache = await getCache(cacheKey);
+	const cache = await caches.open(cacheKey);
 	let lastError;
 	try {
-		await cache.put(request.url, response.clone());
+		await cache.put(cacheKeyRequest(request, response), response.clone());
 		return;
 	} catch (e) {
 		if (e.name !== "QuotaExceededError") {
@@ -103,23 +92,23 @@ export const cachePut = async (cacheKey, request, response, retry = 0) => {
 };
 
 // Checks the Expires header only. Cache-Control max-age is converted to an
-// Expires header by strategyNetworkFirst before caching, so this covers
-// all responses that flow through the standard strategies.
+// Expires header by the network strategies before caching; strategyPrecache
+// stores without Expires, so precached entries never expire.
 export const cacheExpired = (response) => {
 	if (!response) return;
 	const expires = response.headers.get("Expires");
 	if (!expires) return false;
-	const expiresDate = new Date(expires).getTime();
-	const nowDate = Date.now();
-	return expiresDate < nowDate;
+	// Written as !(>=) so an unparseable date (NaN) counts as expired, as
+	// RFC 9111 §5.3 requires for invalid values such as "0".
+	return !(new Date(expires).getTime() >= Date.now());
 };
 
 export const cacheDeleteExpired = async (cacheKey) => {
 	const cache = await caches.open(cacheKey);
-	// Enumerate request keys rather than response URLs: entries are written
-	// with `cache.put(request.url, ...)`, and synthetic/redirected responses
-	// have a `response.url` of "" or one that differs from the request key, so
-	// `cache.delete(response.url)` would never purge them.
+	// Enumerate request keys rather than response URLs: entries are keyed by
+	// cacheKeyRequest (a URL, or a Request carrying the Vary'd headers), and
+	// synthetic/redirected responses have a `response.url` of "" or one that
+	// differs from the key, so `cache.delete(response.url)` would miss them.
 	const requests = await cache.keys();
 	// Check (and purge) every entry concurrently; a serial match/delete pair
 	// per entry makes quota recovery O(entries) round-trips.
@@ -142,15 +131,13 @@ export const cachesDeleteExpired = async () => {
 	return Promise.allSettled(cacheExpires);
 };
 
-export const cachesDelete = async (exclude = []) => {
+export const cachesDelete = async (exclude = [], prefixes = [""]) => {
 	const existingCacheKeys = await caches.keys();
 	const validCacheSet = new Set(exclude);
 	const toDelete = existingCacheKeys.filter(
-		(existingCacheKey) => !validCacheSet.has(existingCacheKey),
+		(existingCacheKey) =>
+			!validCacheSet.has(existingCacheKey) &&
+			prefixes.some((prefix) => existingCacheKey.startsWith(prefix)),
 	);
-	const result = await Promise.all(toDelete.map(caches.delete.bind(caches)));
-	for (const key of toDelete) {
-		delete openCaches[key];
-	}
-	return result;
+	return Promise.all(toDelete.map((key) => caches.delete(key)));
 };

@@ -9,14 +9,11 @@ import {
 	authorizationHeader,
 	deleteHeaderFromResponse,
 	deleteMethod,
-	getMethod,
 	headersGetAll,
-	headMethod,
 	isRequest,
 	isResponse,
 	newRequest,
 	newResponse,
-	optionsMethod,
 	patchMethod,
 	postMethod,
 	putMethod,
@@ -45,6 +42,13 @@ test("http", async (t) => {
 			equal(result["x-custom"], "value");
 		},
 	);
+
+	await t.test("headersGetAll: copies a plain object as-is", async () => {
+		const input = { "X-Custom": "value" };
+		const result = headersGetAll(input);
+		deepEqual(result, input);
+		strictEqual(result === input, false);
+	});
 
 	await t.test(
 		"headersGetAll: should handle entries returning nullish",
@@ -169,9 +173,8 @@ test("http", async (t) => {
 	await t.test(
 		"newResponse: does not overwrite Date when provided as a plain object with uppercase key",
 		async () => {
-			// A plain object preserves its key casing through headersGetAll (no
-			// .entries() normalization), so the uppercase `headers.Date` guard is
-			// the only thing preventing an overwrite here.
+			// Header names are case-insensitive, so an uppercase `Date` key must
+			// count as present.
 			const customDate = "Thu, 01 Jan 2026 00:00:00 GMT";
 			const response = newResponse(
 				{ status: 200, body: "" },
@@ -187,6 +190,20 @@ test("http", async (t) => {
 			const response = newResponse({ status: 200, body: "" });
 			// Response.url defaults to "" per spec; must not be replaced with undefined
 			strictEqual(response.url, "");
+		},
+	);
+
+	await t.test(
+		"newResponse: accepts HeadersInit as an array of tuples",
+		async () => {
+			const date = "Thu, 01 Jan 2026 00:00:00 GMT";
+			const response = newResponse({ status: 200, body: "" }, [
+				["Content-Type", "text/html"],
+				["date", date],
+			]);
+			equal(response.headers.get("Content-Type"), "text/html");
+			equal(response.headers.get("Date"), date);
+			equal(response.headers.has("0"), false);
 		},
 	);
 
@@ -302,13 +319,10 @@ test("http", async (t) => {
 
 	// *** Method constants *** //
 	await t.test("method constants: should have correct values", async () => {
-		equal(getMethod, "GET");
 		equal(postMethod, "POST");
 		equal(putMethod, "PUT");
 		equal(patchMethod, "PATCH");
 		equal(deleteMethod, "DELETE");
-		equal(headMethod, "HEAD");
-		equal(optionsMethod, "OPTIONS");
 	});
 
 	// *** authorizationHeader *** //

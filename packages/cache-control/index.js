@@ -9,7 +9,9 @@ const cacheControlMiddleware = ({ cacheControl } = {}) => {
 		);
 	}
 	const afterNetwork = (_request, response, _event, _config) => {
-		if (isResponse(response)) {
+		// Opaque (no-cors / opaqueredirect) responses have status 0, which
+		// `new Response()` rejects, so they can't be rebuilt with a new header.
+		if (isResponse(response) && response.status !== 0) {
 			response = addHeaderToResponse(response, "Cache-Control", cacheControl);
 		}
 		return response;

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 /* global skipWaiting clients BroadcastChannel */
 import { cachePut, cachesDelete } from "./cache.js";
+import { cacheable } from "./cacheable.js";
 import { consoleError } from "./console.js";
-import { isRequest, newRequest, newResponse } from "./http.js";
+import { isRequest, isResponse, newRequest, newResponse } from "./http.js";
 import { compileRoute } from "./route.js";
 
 export const eventInstall = (event, config) => {
@@ -64,11 +65,21 @@ const eventInstallWaitUntil = async (event, config) => {
 		routes = extracted.map((r) => compileRoute(config.precache, r));
 		config.precache.routes = routes;
 	}
-	await Promise.all(
+	const responses = await Promise.all(
 		routes.map((routeConfig) =>
 			fetchInlineStrategy(newRequest(routeConfig.path), event, routeConfig),
 		),
 	);
+	// Fail install on any missing asset: a resolved install lets activate purge
+	// the previous version's caches while this one is incomplete.
+	for (const [i, response] of responses.entries()) {
+		if (!isResponse(response) || !response.ok) {
+			throw new Error(
+				`precache: failed to fetch "${routes[i].path}": ${isResponse(response) ? response.status : response}`,
+				{ cause: response },
+			);
+		}
+	}
 
 	if (eventType) {
 		await postMessage({ type: eventType });
@@ -82,18 +93,30 @@ export const eventActivate = (event, config) => {
 
 const eventActivateWaitUntil = async (_event, config) => {
 	const exclude = new Set([config.cacheKey, config.precache.cacheKey]);
+	// CacheStorage is origin-wide (page code, other SW scopes); only reap caches
+	// under a prefix this config could have written.
+	const prefixes = new Set([
+		config.cachePrefix,
+		config.precache.cachePrefix,
+		...config.activate.purgePrefixes,
+	]);
 	const precacheRoutes = Array.isArray(config.precache.routes)
 		? config.precache.routes
 		: // Stryker disable next-line ArrayDeclaration: this fallback feeds
-			// `precacheRoutes.concat(config.routes)` then `exclude.add(rc.cacheKey)`.
+			// `routeConfigs` then `exclude.add(rc.cacheKey)`.
 			// A seeded sentinel string has `.cacheKey === undefined`, so the loop
 			// only adds `undefined` to the exclude Set — and since no CacheStorage
 			// key is ever `undefined`, cachesDelete behaves identically. Equivalent.
 			[];
-	for (const routeConfig of precacheRoutes.concat(config.routes)) {
+	const routeConfigs = [config, ...precacheRoutes, ...config.routes];
+	// for...of visits pushed entries too, so nested partitions are walked.
+	for (const routeConfig of routeConfigs) {
 		exclude.add(routeConfig.cacheKey);
+		prefixes.add(routeConfig.cachePrefix);
+		// strategyPartition sub-routes read and write their own caches.
+		routeConfigs.push(...(routeConfig.strategy.routes ?? []));
 	}
-	await cachesDelete([...exclude]);
+	await cachesDelete([...exclude], [...prefixes]);
 	const { postMessage, eventType } = config.activate;
 	if (eventType) {
 		await postMessage({ type: eventType });
@@ -122,12 +145,11 @@ const eventFetchRespondWith = async (event, routeConfig) => {
 export const findRouteConfig = (config, request) => {
 	const { method, url } = request;
 	for (const routeConfig of config.routes) {
-		if (
-			routeConfig.methods.includes(method) &&
-			routeConfig.pathPattern.test(url)
-		) {
-			return routeConfig;
-		}
+		const { pathPattern } = routeConfig;
+		if (!pathPattern || !routeConfig.methods.includes(method)) continue;
+		// A g/y pattern keeps lastIndex between calls; start every match fresh.
+		pathPattern.lastIndex = 0;
+		if (pathPattern.test(url)) return routeConfig;
 	}
 	return config;
 };
@@ -186,8 +208,7 @@ export const fetchStrategy = async (request, event, config) => {
 export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 	if (!Array.isArray(allowedOrigins) || allowedOrigins.length === 0) {
 		throw new Error(
-			"cacheOverrideEvent requires `allowedOrigins` (non-empty string[]) " +
-				"to prevent cache poisoning from untrusted origins.",
+			"cacheOverrideEvent requires `allowedOrigins` (non-empty string[]); a ServiceWorker only receives same-origin messages, so it does not stop script on your own origin from writing to the cache.",
 		);
 	}
 	return (messageEvent) => {
@@ -201,32 +222,54 @@ export const cacheOverrideEvent = (config, { allowedOrigins } = {}) => {
 		// are identical on every reachable path — the optional chain can't observe
 		// a nullish messageEvent here. Equivalent.
 		if (!messageEvent?.data) return;
-		let { request, response } = messageEvent.data;
+		let { request, response, headers } = messageEvent.data;
 		if (typeof request === "string") {
 			request = newRequest(request);
 		}
 		if (!isRequest(request)) return;
 		const routeConfig = findRouteConfig(config, request);
-		if (typeof response === "string") {
-			response = newResponse({ body: response });
-		}
+		// Built inside the async function so invalid posted headers (which
+		// `new Headers()` throws on) are swallowed like any other failure.
+		const store = async () => {
+			if (typeof response === "string") {
+				response = newResponse({ body: response }, headers);
+			}
+			return cachePut(routeConfig.cacheKey, request, response);
+		};
 		// Keep the worker alive until the write lands and swallow failures so a
 		// rejected cache write never becomes an unhandled rejection. `waitUntil`
 		// is only present on a real ExtendableMessageEvent; the optional call lets
 		// the handler also be driven directly (e.g. awaited) without one.
-		const promise = cachePut(routeConfig.cacheKey, request, response).catch(
-			consoleError,
-		);
+		const promise = store().catch(consoleError);
 		messageEvent.waitUntil?.(promise);
 		return promise;
 	};
 };
 
-export const backgroundFetchSuccessEvent = (event) => {
-	event.waitUntil(backgroundFetchSuccessEventWaitUntil(event));
+export const backgroundFetchSuccessEvent = (event, config) => {
+	event.waitUntil(backgroundFetchSuccessEventWaitUntil(event, config));
 };
 
-const backgroundFetchSuccessEventWaitUntil = async ({ registration }) => {
+const backgroundFetchSuccessEventWaitUntil = async (
+	{ registration },
+	config,
+) => {
+	// The downloads only live on the registration until this event ends; copy
+	// each into the cache of the route it would be served from.
+	const records = await registration.matchAll();
+	await Promise.all(
+		records.map(async ({ request, responseReady }) => {
+			const response = await responseReady;
+			// Same filter as the strategies: cache.put rejects some of these, and
+			// a credential Vary would be shared across users.
+			if (!cacheable(request, response)) return;
+			await cachePut(
+				findRouteConfig(config, request).cacheKey,
+				request,
+				response,
+			);
+		}),
+	);
 	const channel = new BroadcastChannel(registration.id);
 	channel.postMessage({ stored: true });
 	channel.close();

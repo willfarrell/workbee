@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+// These tests fulfil the ServiceWorker's own requests with context.route();
+// Playwright only intercepts ServiceWorker network traffic in Chromium.
+const SW_ROUTE_ONLY_CHROMIUM =
+	"Playwright routes ServiceWorker-originated requests only in Chromium";
+
 const localhost = "/index.html";
 
 const awaitServiceWorker = async (page) => {
@@ -19,7 +24,11 @@ const awaitServiceWorker = async (page) => {
 };
 
 test.describe("Strategies", () => {
-	test("strategyNetworkOnly should fetch from network", async ({ browser }) => {
+	test("strategyNetworkOnly should fetch from network", async ({
+		browserName,
+		browser,
+	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
@@ -76,8 +85,10 @@ test.describe("Strategies", () => {
 	});
 
 	test("strategyNetworkFirst should try network then fall back to cache", async ({
+		browserName,
 		browser,
 	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
@@ -177,8 +188,10 @@ test.describe("Strategies", () => {
 	});
 
 	test("strategyStaleIfError should fall back to cache on 5xx", async ({
+		browserName,
 		browser,
 	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
@@ -245,8 +258,10 @@ test.describe("Strategies", () => {
 
 test.describe("Middleware", () => {
 	test("offlineMiddleware should accept POST and return 202", async ({
+		browserName,
 		browser,
 	}) => {
+		test.skip(browserName !== "chromium", SW_ROUTE_ONLY_CHROMIUM);
 		const context = await browser.newContext();
 		const page = await context.newPage();
 

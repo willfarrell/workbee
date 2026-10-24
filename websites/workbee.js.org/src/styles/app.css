@@ -32,10 +32,12 @@
 @import "@willfarrell-ds/vanilla/classes/.container-slices.css";
 @import "@willfarrell-ds/vanilla/classes/.container-toc.css";
 @import "@willfarrell-ds/vanilla/classes/.grid.css";
+@import "@willfarrell-ds/vanilla/classes/.group.css";
 @import "@willfarrell-ds/vanilla/classes/.icon.css";
 @import "@willfarrell-ds/vanilla/classes/a.skip.css";
 @import "@willfarrell-ds/vanilla/classes/.visually-hidden.css";
 @import "@willfarrell-ds/vanilla/components/ds-card.css";
+@import "@willfarrell-ds/vanilla/components/ds-copy-pre.css";
 @import "@willfarrell-ds/vanilla/components/ds-input-focus.css";
 @import "@willfarrell-ds/vanilla/theme.css";
 @import "./theme.css";

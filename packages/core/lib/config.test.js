@@ -1,14 +1,16 @@
 /* global Response Headers */
 
-import { deepEqual, equal, strictEqual } from "node:assert";
+import { deepEqual, equal, strictEqual, throws } from "node:assert";
 import test from "node:test";
 import "../../../fixtures/helper.js";
 import {
 	compileConfig,
 	defaultConfig,
+	findRouteConfig,
 	pathPattern,
 	strategyNetworkFirst,
 	strategyNetworkOnly,
+	strategyPrecache,
 } from "../index.js";
 
 test("config", async (t) => {
@@ -40,7 +42,7 @@ test("config", async (t) => {
 	await t.test("defaultConfig: precache should have correct defaults", () => {
 		deepEqual(defaultConfig.precache.routes, []);
 		strictEqual(defaultConfig.precache.eventType, false);
-		strictEqual(defaultConfig.precache.strategy, strategyNetworkFirst);
+		strictEqual(defaultConfig.precache.strategy, strategyPrecache);
 	});
 
 	await t.test("defaultConfig: activate should have correct defaults", () => {
@@ -198,6 +200,7 @@ test("config", async (t) => {
 			middlewares: [],
 			routes: [
 				{
+					pathPattern: /\/api\//,
 					cacheName: "api",
 					strategy: strategyNetworkFirst,
 				},
@@ -359,6 +362,19 @@ test("config", async (t) => {
 	);
 
 	await t.test(
+		"compileConfig: throws a clear error when activate.purgePrefixes is not an array",
+		() => {
+			// A string would be spread into one-character prefixes and purge
+			// almost every cache on the origin.
+			throws(() => compileConfig({ activate: { purgePrefixes: "sw-" } }), {
+				name: "TypeError",
+				message:
+					"compileConfig: `activate.purgePrefixes` must be an array, received string",
+			});
+		},
+	);
+
+	await t.test(
 		"compileConfig: does not throw when precache.routes is a string URL",
 		() => {
 			const config = compileConfig({
@@ -393,4 +409,28 @@ test("config", async (t) => {
 		equal(config.cacheKey, "custom-data");
 		strictEqual(config.strategy, strategyNetworkFirst);
 	});
+
+	await t.test(
+		"compileConfig: a route without a pathPattern RegExp is rejected up front",
+		() => {
+			// findRouteConfig calls routeConfig.pathPattern.test() on every fetch; a
+			// missing pattern would crash every request instead of failing once here.
+			for (const route of [
+				{ cacheName: "api" },
+				{ pathPattern: "/api" },
+				null,
+			]) {
+				throws(
+					() => compileConfig({ routes: [route] }),
+					/routes\[0\]\.pathPattern must be a RegExp/,
+				);
+			}
+			// Path-only routes (partition sub-requests) are never matched.
+			const config = compileConfig({ routes: [{ path: "/header.html" }] });
+			strictEqual(
+				findRouteConfig(config, new Request("http://localhost:8080/x")),
+				config,
+			);
+		},
+	);
 });

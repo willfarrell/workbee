@@ -1,241 +1,297 @@
-import { doesNotThrow, strictEqual } from "node:assert";
+/* global BroadcastChannel EventTarget Event MessageEvent */
+import { deepEqual, doesNotThrow, strictEqual } from "node:assert";
 import { afterEach, beforeEach, mock, suite, test } from "node:test";
 
-// Mock browser APIs
-const listeners = {};
-const mockDocument = {
-	addEventListener: (name, handler, capture) => {
-		listeners[name] = { handler, capture };
-	},
-};
-const mockPostMessage = mock.fn();
-const mockNavigator = {
-	serviceWorker: {
-		controller: {
-			postMessage: mockPostMessage,
-		},
-	},
-};
+const { default: inactivityClient } = await import("./client.js");
 
-const { default: initClient } = await import("./client.js");
+const windowMs = 15 * 60 * 1000;
 
 // Scope the per-test global swapping inside a suite. node:test's top-level
 // beforeEach/afterEach attach to the ROOT context, so under Stryker's node-test
 // runner — which loads the whole corpus into one process (isolation:'none') —
-// every file's top-level hooks would run before/after EVERY test in EVERY file,
-// and the last-registered `navigator` setter would win (e.g. offline/client's),
-// routing this file's postMessage to a sibling's mock. A suite keeps the hooks
-// local to these tests. `navigator` is a read-only accessor by default in Node,
-// so it must be (re)defined, not assigned.
+// every file's top-level hooks would run before/after EVERY test in EVERY file.
+// A suite keeps the hooks local to these tests. `navigator` is a read-only
+// accessor by default in Node, so it must be (re)defined, not assigned.
 suite("inactivity client", () => {
 	let savedDocument;
 	let savedNavigator;
-	beforeEach(() => {
-		savedDocument = globalThis.document;
-		savedNavigator = globalThis.navigator;
-		globalThis.document = mockDocument;
+	let serviceWorker;
+	const setNavigator = (value) => {
 		Object.defineProperty(globalThis, "navigator", {
-			value: mockNavigator,
+			value,
 			writable: true,
 			configurable: true,
 		});
+	};
+	const swMessage = (data) =>
+		serviceWorker.dispatchEvent(new MessageEvent("message", { data }));
+	const domEvent = (name) => document.dispatchEvent(new Event(name));
+
+	beforeEach((t) => {
+		t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+		savedDocument = globalThis.document;
+		savedNavigator = globalThis.navigator;
+		serviceWorker = new EventTarget();
+		globalThis.document = new EventTarget();
+		setNavigator({ serviceWorker });
 	});
 	afterEach(() => {
 		globalThis.document = savedDocument;
-		Object.defineProperty(globalThis, "navigator", {
-			value: savedNavigator,
-			writable: true,
-			configurable: true,
+		setNavigator(savedNavigator);
+	});
+
+	test("calls inactivityEvent once the window lapses with no activity", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+
+		t.mock.timers.tick(windowMs - 1);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
+		t.mock.timers.tick(1);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		cleanup();
+	});
+
+	test("honours inactivityAllowedInMin", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({
+			inactivityAllowedInMin: 0.05,
+			inactivityEvent,
 		});
+
+		t.mock.timers.tick(2999);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
+		t.mock.timers.tick(1);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		cleanup();
 	});
 
-	test("registers default event listeners", () => {
-		initClient();
-		const expectedEvents = [
-			"load",
-			"keypress",
-			"mousedown",
-			"mousemove",
-			"scroll",
-			"touchmove",
-			"touchstart",
-			"visibilitychange",
-			"wheel",
-		];
-		for (const event of expectedEvents) {
-			strictEqual(event in listeners, true, `Missing listener for ${event}`);
-			strictEqual(
-				listeners[event].capture,
-				true,
-				`${event} should use capture`,
-			);
+	test("DOM activity pushes the deadline out by a full window", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+
+		t.mock.timers.tick(10 * 60 * 1000);
+		domEvent("mousedown");
+		t.mock.timers.tick(windowMs - 1);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
+		t.mock.timers.tick(1);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		cleanup();
+	});
+
+	test("activity messages from the ServiceWorker count as activity", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+
+		t.mock.timers.tick(10 * 60 * 1000);
+		swMessage({ type: "inactivity-activity" });
+		t.mock.timers.tick(windowMs - 1);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
+		t.mock.timers.tick(1);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		cleanup();
+	});
+
+	test("ignores unrelated ServiceWorker messages", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+
+		t.mock.timers.tick(10 * 60 * 1000);
+		swMessage({ type: "offline-enqueue" });
+		swMessage(null);
+		t.mock.timers.tick(5 * 60 * 1000);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		cleanup();
+	});
+
+	test("fires again after a new period of activity then inactivity", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+
+		t.mock.timers.tick(windowMs);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		// Idle past the lapse: no repeat notification without new activity.
+		t.mock.timers.tick(windowMs * 2);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+
+		domEvent("keydown");
+		t.mock.timers.tick(windowMs);
+		strictEqual(inactivityEvent.mock.callCount(), 2);
+		cleanup();
+	});
+
+	test("listens to the default activity events as passive capture listeners", () => {
+		const added = [];
+		globalThis.document = {
+			addEventListener: (name, _handler, options) =>
+				added.push({ name, options }),
+			removeEventListener: () => {},
+		};
+		const cleanup = inactivityClient({ inactivityEvent: () => {} });
+
+		deepEqual(
+			added.map(({ name }) => name),
+			[
+				"load",
+				"keydown",
+				"mousedown",
+				"mousemove",
+				"scroll",
+				"touchmove",
+				"touchstart",
+				"visibilitychange",
+				"wheel",
+			],
+		);
+		for (const { options } of added) {
+			deepEqual(options, { capture: true, passive: true });
 		}
+		cleanup();
 	});
 
-	test("registers custom event listeners", () => {
-		const customListeners = {};
-		const customDoc = {
-			addEventListener: (name, handler, capture) => {
-				customListeners[name] = { handler, capture };
-			},
-		};
-		globalThis.document = customDoc;
+	test("accepts custom activity events", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent, events: ["click"] });
 
-		initClient(["click", "keydown"]);
-		strictEqual("click" in customListeners, true);
-		strictEqual("keydown" in customListeners, true);
+		t.mock.timers.tick(10 * 60 * 1000);
+		domEvent("mousedown"); // not in the custom list
+		t.mock.timers.tick(5 * 60 * 1000);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
 
-		globalThis.document = mockDocument;
+		domEvent("click");
+		t.mock.timers.tick(windowMs);
+		strictEqual(inactivityEvent.mock.callCount(), 2);
+		cleanup();
 	});
 
-	test("posts message on activity", () => {
-		mockPostMessage.mock.resetCalls();
-		const handler = listeners.mousedown.handler;
-		handler();
-		strictEqual(mockPostMessage.mock.callCount(), 1);
-		strictEqual(mockPostMessage.mock.calls[0].arguments[0].type, "inactivity");
+	test("warns via the default inactivityEvent when none is provided", (t) => {
+		const warn = t.mock.method(console, "warn", () => {});
+		const cleanup = inactivityClient();
+
+		t.mock.timers.tick(windowMs);
+		strictEqual(warn.mock.callCount(), 1);
+		strictEqual(
+			warn.mock.calls[0].arguments[0],
+			"@work-bee/inactivity: inactivity threshold reached but no `inactivityEvent` callback was provided",
+		);
+		cleanup();
 	});
 
-	test("throttles activity events within 1 second", () => {
-		mockPostMessage.mock.resetCalls();
-		const originalDateNow = Date.now;
-		// Use a time far in the future to ensure it exceeds any previously set activityTimestamp
-		let now = 9_000_000_000_000;
-		Date.now = () => now;
+	test("cleanup stops the timer and removes every listener", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
 
-		const handler = listeners.mousedown.handler;
-		// First call - should fire (well past any previous timestamp)
-		handler();
-		strictEqual(mockPostMessage.mock.callCount(), 1);
-
-		// Within 1 second - should be throttled
-		now = 9_000_000_000_500;
-		handler();
-		strictEqual(mockPostMessage.mock.callCount(), 1);
-
-		// After 1 second - should fire
-		now = 9_000_000_001_001;
-		handler();
-		strictEqual(mockPostMessage.mock.callCount(), 2);
-
-		Date.now = originalDateNow;
+		cleanup();
+		domEvent("mousedown");
+		swMessage({ type: "inactivity-activity" });
+		t.mock.timers.tick(windowMs * 2);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
 	});
 
-	test("handles missing service worker controller gracefully", () => {
-		// Fresh closure so activityTimestamp starts at 0 and the throttle guard does
-		// not short-circuit before the postMessage line — otherwise that line is
-		// never reached and `controller?.postMessage` -> `controller.postMessage`
-		// (a TypeError on null) would never be exercised.
-		const freshListeners = {};
-		const freshDoc = {
-			addEventListener: (name, handler, capture) => {
-				freshListeners[name] = { handler, capture };
-			},
-		};
-		globalThis.document = freshDoc;
-		const savedNav = globalThis.navigator;
-		globalThis.navigator = { serviceWorker: { controller: null } };
+	test("cleanup after a lapse leaves nothing that can re-arm the timer", (t) => {
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+		t.mock.timers.tick(windowMs);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
 
-		const originalDateNow = Date.now;
-		Date.now = () => 9_999_999;
-		initClient(["mousedown"]);
-		const handler = freshListeners.mousedown.handler;
-		// controller is null: real `controller?.postMessage` short-circuits to
-		// undefined; the mutant `controller.postMessage` throws on null.
-		doesNotThrow(handler);
-		Date.now = originalDateNow;
-
-		globalThis.navigator = savedNav;
-		globalThis.document = mockDocument;
+		cleanup();
+		domEvent("mousedown");
+		swMessage({ type: "inactivity-activity" });
+		t.mock.timers.tick(windowMs * 2);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
 	});
 
-	test("handles missing service worker gracefully", () => {
-		const freshListeners = {};
-		const freshDoc = {
-			addEventListener: (name, handler, capture) => {
-				freshListeners[name] = { handler, capture };
-			},
-		};
-		globalThis.document = freshDoc;
-		const savedNav = globalThis.navigator;
-		globalThis.navigator = {};
-
-		const originalDateNow = Date.now;
-		Date.now = () => 19_999_999;
-		initClient(["mousedown"]);
-		const handler = freshListeners.mousedown.handler;
-		// serviceWorker is undefined: real `serviceWorker?.controller` short-circuits;
-		// the mutant `serviceWorker.controller` throws on undefined.
-		doesNotThrow(handler);
-		Date.now = originalDateNow;
-
-		globalThis.navigator = savedNav;
-		globalThis.document = mockDocument;
-	});
-
-	test("fires (does not throttle) at exactly the 1000ms boundary", () => {
-		// Boundary for `activityTimestamp + 1000 > now`. After the first event sets
-		// activityTimestamp = T0, an event at exactly T0 + 1000 makes the guard
-		// `T0+1000 > T0+1000` false -> it FIRES. The `>` -> `>=` mutant would make it
-		// `T0+1000 >= T0+1000` true -> throttled, so the second message is suppressed.
-		const freshListeners = {};
-		const freshDoc = {
-			addEventListener: (name, handler, capture) => {
-				freshListeners[name] = { handler, capture };
-			},
-		};
-		globalThis.document = freshDoc;
-		const savedNav = globalThis.navigator;
-		const post = mock.fn();
-		globalThis.navigator = {
-			serviceWorker: { controller: { postMessage: post } },
-		};
-
-		const originalDateNow = Date.now;
-		const t0 = 5_000_000;
-		Date.now = () => t0;
-		initClient(["mousedown"]);
-		const handler = freshListeners.mousedown.handler;
-		handler(); // first event fires, activityTimestamp = t0
-		strictEqual(post.mock.callCount(), 1);
-
-		// Exactly 1000ms later: real code fires (count 2), `>=` mutant throttles (1).
-		Date.now = () => t0 + 1000;
-		handler();
-		strictEqual(post.mock.callCount(), 2);
-
-		Date.now = originalDateNow;
-		globalThis.navigator = savedNav;
-		globalThis.document = mockDocument;
-	});
-
-	test("returns cleanup function that removes listeners", () => {
+	test("cleanup removes the same DOM handlers it added", () => {
 		const added = [];
 		const removed = [];
-		const cleanupDoc = {
-			addEventListener: (name, handler, capture) => {
-				added.push({ name, handler, capture });
-			},
-			removeEventListener: (name, handler, capture) => {
-				removed.push({ name, handler, capture });
-			},
+		globalThis.document = {
+			addEventListener: (...args) => added.push(args),
+			removeEventListener: (...args) => removed.push(args),
 		};
-		globalThis.document = cleanupDoc;
-
-		const cleanup = initClient(["click", "keydown"]);
-		strictEqual(typeof cleanup, "function");
-		strictEqual(added.length, 2);
+		const cleanup = inactivityClient({
+			inactivityEvent: () => {},
+			events: ["click", "keydown"],
+		});
 		strictEqual(removed.length, 0);
 
 		cleanup();
-		strictEqual(removed.length, 2);
-		// Verify same handler references were removed
-		for (let i = 0; i < added.length; i++) {
-			strictEqual(removed[i].name, added[i].name);
-			strictEqual(removed[i].handler, added[i].handler);
-			strictEqual(removed[i].capture, added[i].capture);
-		}
+		deepEqual(removed, added);
+	});
 
-		globalThis.document = mockDocument;
+	test("works without ServiceWorker support", (t) => {
+		setNavigator({});
+		const inactivityEvent = mock.fn();
+		let cleanup;
+		doesNotThrow(() => {
+			cleanup = inactivityClient({ inactivityEvent });
+		});
+
+		t.mock.timers.tick(windowMs);
+		strictEqual(inactivityEvent.mock.callCount(), 1);
+		doesNotThrow(cleanup);
+	});
+
+	test("DOM activity in one tab resets the countdown in other tabs", async (t) => {
+		// Each tab has its own document; activity is shared over a
+		// BroadcastChannel so a user busy in tab A isn't timed out in tab B.
+		const deliver = () => new Promise((resolve) => setImmediate(resolve));
+		const inactiveA = mock.fn();
+		const inactiveB = mock.fn();
+		const documentA = new EventTarget();
+		globalThis.document = documentA;
+		const cleanupA = inactivityClient({ inactivityEvent: inactiveA });
+		globalThis.document = new EventTarget();
+		const cleanupB = inactivityClient({ inactivityEvent: inactiveB });
+
+		t.mock.timers.tick(windowMs - 1000);
+		documentA.dispatchEvent(new Event("keydown"));
+		await deliver();
+		t.mock.timers.tick(1000);
+		strictEqual(inactiveB.mock.callCount(), 0);
+
+		t.mock.timers.tick(windowMs - 1000);
+		strictEqual(inactiveA.mock.callCount(), 1);
+		strictEqual(inactiveB.mock.callCount(), 1);
+		cleanupA();
+		cleanupB();
+	});
+
+	test("activity broadcast on the @work-bee/inactivity channel resets the countdown", async (t) => {
+		// The channel name is the cross-tab contract: any tab (or app code)
+		// posting on it counts as activity.
+		const inactivityEvent = mock.fn();
+		const cleanup = inactivityClient({ inactivityEvent });
+		const otherTab = new BroadcastChannel("@work-bee/inactivity");
+
+		t.mock.timers.tick(windowMs - 1);
+		otherTab.postMessage(null);
+		await new Promise((resolve) => setImmediate(resolve));
+		t.mock.timers.tick(1);
+		strictEqual(inactivityEvent.mock.callCount(), 0);
+
+		otherTab.close();
+		cleanup();
+	});
+
+	test("DOM activity is broadcast at most once per second", async (t) => {
+		const received = [];
+		const otherTab = new BroadcastChannel("@work-bee/inactivity");
+		otherTab.onmessage = () => received.push(Date.now());
+		const cleanup = inactivityClient({ inactivityEvent: () => {} });
+		const deliver = () => new Promise((resolve) => setImmediate(resolve));
+
+		domEvent("mousemove");
+		domEvent("mousemove");
+		t.mock.timers.tick(999);
+		domEvent("mousemove");
+		await deliver();
+		strictEqual(received.length, 1);
+
+		t.mock.timers.tick(1); // exactly 1000ms after the first broadcast
+		domEvent("mousemove");
+		await deliver();
+		strictEqual(received.length, 2);
+
+		otherTab.close();
+		cleanup();
 	});
 });

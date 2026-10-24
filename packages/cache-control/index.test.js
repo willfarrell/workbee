@@ -1,4 +1,4 @@
-/* global Request */
+/* global Request Response */
 
 import { deepEqual, strictEqual } from "node:assert";
 import test from "node:test";
@@ -62,4 +62,23 @@ test("cacheControlMiddleware.afterNetwork: Should skip when response is an error
 	);
 
 	deepEqual(outputResponse, response);
+});
+
+test("cacheControlMiddleware.afterNetwork: Should return opaque (status 0) responses unchanged", async (_t) => {
+	// no-cors / opaqueredirect responses have status 0, which `new Response()`
+	// rejects, so rebuilding one to add a header would fail the request.
+	const request = new Request(`${domain}/img`, { method: "GET" });
+	const response = Response.error();
+	const cacheControl = cacheControlMiddleware({
+		cacheControl: "no-cache",
+	});
+	const { event, config } = setupMocks();
+	const outputResponse = await cacheControl.afterNetwork(
+		request,
+		response,
+		event,
+		config,
+	);
+
+	strictEqual(outputResponse, response);
 });

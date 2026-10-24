@@ -3,12 +3,16 @@
 import { deepEqual, equal, strictEqual } from "node:assert";
 import test from "node:test";
 import { setTimeout } from "node:timers/promises";
-import { domain, setupMocks, spy } from "../../../fixtures/helper.js";
+import {
+	cacheStore,
+	domain,
+	setupMocks,
+	spy,
+} from "../../../fixtures/helper.js";
 import {
 	compileConfig,
 	fetchInlineStrategy,
 	fetchStrategy,
-	openCaches,
 	pathPattern,
 	strategyCacheFirst,
 	strategyCacheFirstIgnore,
@@ -23,10 +27,10 @@ import {
 
 // Strategies
 test("Strategies", async (t) => {
-	// Every sub-test calls setupMocks which writes to openCaches["sw-default"].
+	// Every sub-test calls setupMocks which writes to cacheStore["sw-default"].
 	// Clean it after each so a failing test doesn't leak its mock into the next.
 	t.afterEach(() => {
-		delete openCaches["sw-default"];
+		delete cacheStore["sw-default"];
 	});
 	// *** strategyNetworkOnly *** //
 	await t.test(
@@ -189,28 +193,6 @@ test("Strategies", async (t) => {
 			} catch (e) {
 				strictEqual(e, undefined);
 			}
-		},
-	);
-
-	await t.test(
-		"strategyCacheOnly: Should find cached response after SW restart (openCaches empty)",
-		async (_t) => {
-			// Simulate a prior SW lifetime that populated the Cache Storage
-			const realCache = await caches.open("sw-default");
-			await realCache.put(
-				`${domain}/restart-check`,
-				new Response("{}", { status: 200 }),
-			);
-
-			// Simulate SW restart: in-memory openCaches is empty
-			delete openCaches["sw-default"];
-
-			const request = new Request(`${domain}/restart-check`, { method: "GET" });
-			const config = compileConfig({ strategy: strategyCacheOnly });
-
-			const response = await strategyCacheOnly(request, {}, config);
-
-			equal(response?.status, 200);
 		},
 	);
 
@@ -1461,6 +1443,55 @@ test("Strategies", async (t) => {
 	);
 
 	await t.test(
+		"strategyPartition: inherits status/statusText along with the first sub-response's headers",
+		async (_t) => {
+			const { strategyPartition } = await import("../index.js");
+			const notFound = () =>
+				new Response("gone", { status: 404, statusText: "Not Found" });
+			const event = { waitUntil: () => {} };
+			const request = new Request(`${domain}/200`);
+			const inherited = await strategyPartition(
+				compileConfig({ routes: [{ path: "/a", strategy: notFound }] }),
+			)(request, event, {});
+			equal(inherited.status, 404);
+			equal(inherited.statusText, "Not Found");
+			equal(await inherited.text(), "gone");
+			// Caller-supplied headers describe the composite: status stays 200.
+			const explicit = await strategyPartition({
+				...compileConfig({ routes: [{ path: "/a", strategy: notFound }] }),
+				headers: {},
+			})(request, event, {});
+			equal(explicit.status, 200);
+			await explicit.text();
+		},
+	);
+
+	await t.test(
+		"strategyPartition: a first sub-response with a null-body status still yields a 200 composite",
+		async (_t) => {
+			// 204/304 can't carry the composite body; inheriting them would make
+			// the Response constructor throw with the stream's waitUntil pending.
+			const { strategyPartition } = await import("../index.js");
+			const noContent = () => new Response(null, { status: 204 });
+			const text = () => new Response("b");
+			const waitUntils = [];
+			const event = { waitUntil: (p) => waitUntils.push(p) };
+			const request = new Request(`${domain}/200`);
+			const response = await strategyPartition(
+				compileConfig({
+					routes: [
+						{ path: "/a", strategy: noContent },
+						{ path: "/b", strategy: text },
+					],
+				}),
+			)(request, event, {});
+			equal(response.status, 200);
+			equal(await response.text(), "b");
+			await Promise.all(waitUntils);
+		},
+	);
+
+	await t.test(
 		"strategyPartition: non-Error, non-Response first sub-response is wrapped into an Error",
 		async (_t) => {
 			// Covers the first-sub guard's `new Error(String(first))` arm: a
@@ -1486,6 +1517,62 @@ test("Strategies", async (t) => {
 			const result = await fetchStrategy(event.__request, event, config);
 			strictEqual(result instanceof Error, true);
 			strictEqual(result.message, String(undefined));
+		},
+	);
+
+	await t.test(
+		"strategyPartition: first-sub-response failure aborts siblings and drains their rejections",
+		async (_t) => {
+			// No composite is built, so in-flight siblings must be cancelled and
+			// their later rejections must not escape as unhandledRejection.
+			const { strategyPartition } = await import("../index.js");
+			const unhandled = [];
+			const onUnhandled = (e) => unhandled.push(e);
+			process.on("unhandledRejection", onUnhandled);
+
+			const failingStrategy = () => {
+				throw new Error("first sub failed");
+			};
+			const siblingSignals = [];
+			// Its inline promise rejects only once the sub-request is aborted.
+			const abortRejectingStrategy = (request, event) => {
+				siblingSignals.push(request.signal);
+				event.waitUntil(
+					new Promise((_resolve, reject) => {
+						request.signal.addEventListener("abort", () =>
+							reject(new Error("sibling aborted")),
+						);
+					}),
+				);
+				return new Response("sibling");
+			};
+			const waitUntils = [];
+			const event = {
+				__request: new Request(`${domain}/200`, { method: "GET" }),
+				waitUntil: (fct) => waitUntils.push(fct),
+			};
+			const { config } = setupMocks(
+				strategyPartition(
+					compileConfig({
+						routes: [
+							{ path: "$1/fail", strategy: failingStrategy },
+							{ path: "$1/sibling", strategy: abortRejectingStrategy },
+						],
+						middlewares: [],
+					}),
+				),
+			);
+			config.pathPattern = pathPattern("(.*?)/([^/]*?)$");
+
+			const result = await fetchStrategy(event.__request, event, config);
+			await setTimeout(10);
+			process.off("unhandledRejection", onUnhandled);
+
+			strictEqual(result instanceof Error, true);
+			strictEqual(result.message, "first sub failed");
+			strictEqual(siblingSignals.length, 1);
+			strictEqual(siblingSignals[0].aborted, true);
+			strictEqual(unhandled.length, 0);
 		},
 	);
 
@@ -1878,7 +1965,7 @@ test("Strategies", async (t) => {
 		const { cache, config } = setupMocks(strategyStaleIfError, null);
 		const cachedBody = "cached-200";
 		const matchSpy = spy(async () => new Response(cachedBody, { status: 200 }));
-		openCaches["sw-default"].match = matchSpy;
+		cacheStore["sw-default"].match = matchSpy;
 		cache.match = matchSpy;
 		const event = { waitUntil: () => {} };
 
@@ -1990,6 +2077,241 @@ test("Strategies", async (t) => {
 				deferredError = e;
 			}
 			strictEqual(deferredError, bufferError);
+		},
+	);
+
+	for (const [name, strategy] of [
+		["strategyNetworkFirst", strategyNetworkFirst],
+		["strategyStaleIfError", strategyStaleIfError],
+	]) {
+		await t.test(
+			`${name}: does not try to cache responses the Cache API rejects`,
+			async (tt) => {
+				// cache.put throws on 206 and on `Vary: *`; the network response must
+				// still be returned and no write attempted.
+				const fetchMock = tt.mock.method(globalThis, "fetch");
+				for (const init of [
+					{ status: 206, headers: { "Cache-Control": "max-age=60" } },
+					{
+						status: 200,
+						headers: { "Cache-Control": "max-age=60", Vary: "*" },
+					},
+				]) {
+					fetchMock.mock.mockImplementation(
+						async () => new Response("partial", init),
+					);
+					const { cache, event, config } = setupMocks(strategy, null, tt);
+					const request = new Request(`${domain}/uncacheable`);
+					const response = await strategy(request, event, config);
+					await event.resolveWaitUntils();
+					equal(response.status, init.status);
+					equal(cache.put.callCount, 0, JSON.stringify(init));
+				}
+			},
+		);
+	}
+
+	await t.test(
+		"strategyCacheOnly: resolves (not rejects) with the cached response",
+		async (tt) => {
+			const { config } = setupMocks(strategyCacheOnly, undefined, tt);
+			const response = await strategyCacheOnly(
+				new Request(`${domain}/cache/found`),
+				{},
+				config,
+			);
+			equal(response.status, 200);
+		},
+	);
+
+	await t.test(
+		"strategyNetworkFirst: a Vary on named headers is still cached",
+		async (tt) => {
+			tt.mock.method(
+				globalThis,
+				"fetch",
+				async () =>
+					new Response("ok", {
+						headers: { "Cache-Control": "max-age=60", Vary: "Accept" },
+					}),
+			);
+			const { cache, event, config } = setupMocks(
+				strategyNetworkFirst,
+				null,
+				tt,
+			);
+			await strategyNetworkFirst(new Request(`${domain}/vary`), event, config);
+			await event.resolveWaitUntils();
+			equal(cache.put.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"strategyNetworkFirst: does not cache a response that varies on a credential",
+		async (tt) => {
+			// The key can't hold the credential, so an anonymous request would
+			// later match the per-user entry.
+			const fetchMock = tt.mock.method(globalThis, "fetch");
+			for (const vary of ["Authorization", "accept, Cookie"]) {
+				fetchMock.mock.mockImplementation(
+					async () =>
+						new Response("private", {
+							headers: { "Cache-Control": "max-age=60", Vary: vary },
+						}),
+				);
+				const { cache, event, config } = setupMocks(
+					strategyNetworkFirst,
+					null,
+					tt,
+				);
+				await strategyNetworkFirst(new Request(`${domain}/me`), event, config);
+				await event.resolveWaitUntils();
+				equal(cache.put.callCount, 0, vary);
+			}
+		},
+	);
+
+	await t.test(
+		"strategyNetworkFirst: caches tokens that only start or end like a refused one",
+		async (tt) => {
+			// Each passes one boundary of a directive/credential match but not the
+			// other, so only a full token-boundary check lets them be stored.
+			const fetchMock = tt.mock.method(globalThis, "fetch");
+			for (const headers of [
+				{ "Cache-Control": "max-age=60, no-store-ish" },
+				{ "Cache-Control": "max-age=60, no-cache-ish" },
+				{ "Cache-Control": "max-age=60, x-no-cache" },
+				{ "Cache-Control": "max-age=60", Vary: "Authorization-Hint" },
+			]) {
+				fetchMock.mock.mockImplementation(
+					async () => new Response("ok", { headers }),
+				);
+				const { cache, event, config } = setupMocks(
+					strategyNetworkFirst,
+					null,
+					tt,
+				);
+				await strategyNetworkFirst(new Request(`${domain}/nm`), event, config);
+				await event.resolveWaitUntils();
+				equal(cache.put.callCount, 1, JSON.stringify(headers));
+			}
+		},
+	);
+
+	await t.test(
+		"strategyNetworkFirst/strategyPrecache: only cache GET responses",
+		async (tt) => {
+			// Entries are keyed by URL as a GET, so storing a POST/HEAD response
+			// would answer later GETs with it.
+			const { strategyPrecache } = await import("../index.js");
+			tt.mock.method(
+				globalThis,
+				"fetch",
+				async () =>
+					new Response("ok", { headers: { "Cache-Control": "max-age=60" } }),
+			);
+			for (const strategy of [strategyNetworkFirst, strategyPrecache]) {
+				for (const method of ["POST", "HEAD"]) {
+					const { cache, event, config } = setupMocks(strategy, null, tt);
+					const request = new Request(`${domain}/write`, { method });
+					await strategy(request, event, config);
+					await event.resolveWaitUntils();
+					equal(cache.put.callCount, 0, `${strategy.name} ${method}`);
+				}
+			}
+		},
+	);
+
+	await t.test(
+		"strategyNetworkFirst: honours Cache-Control no-store and no-cache",
+		async (tt) => {
+			// `Expires: 0` is a truthy string, so only the directive check stops
+			// the classic "never cache" header set from being stored.
+			const fetchMock = tt.mock.method(globalThis, "fetch");
+			for (const cacheControl of [
+				"no-store, no-cache, must-revalidate",
+				"max-age=60, NO-STORE",
+				"no-cache, max-age=60",
+				"max-age=60,no-cache",
+			]) {
+				fetchMock.mock.mockImplementation(
+					async () =>
+						new Response("ok", {
+							headers: { "Cache-Control": cacheControl, Expires: "0" },
+						}),
+				);
+				const { cache, event, config } = setupMocks(
+					strategyNetworkFirst,
+					null,
+					tt,
+				);
+				await strategyNetworkFirst(new Request(`${domain}/ns`), event, config);
+				await event.resolveWaitUntils();
+				equal(cache.put.callCount, 0, cacheControl);
+			}
+			// A token that merely contains the name is not the directive.
+			fetchMock.mock.mockImplementation(
+				async () =>
+					new Response("ok", {
+						headers: { "Cache-Control": "max-age=60, x-no-store-ish" },
+					}),
+			);
+			const { cache, event, config } = setupMocks(
+				strategyNetworkFirst,
+				null,
+				tt,
+			);
+			await strategyNetworkFirst(new Request(`${domain}/ns`), event, config);
+			await event.resolveWaitUntils();
+			equal(cache.put.callCount, 1);
+		},
+	);
+
+	await t.test(
+		"strategyPrecache: does not store no-store, still stores no-cache",
+		async (tt) => {
+			// Precache freshness is owned by the SW version, so `no-cache` (the
+			// usual header on index.html) must still be precached.
+			const { strategyPrecache } = await import("../index.js");
+			const fetchMock = tt.mock.method(globalThis, "fetch");
+			for (const [cacheControl, puts] of [
+				["no-store", 0],
+				["no-cache", 1],
+			]) {
+				fetchMock.mock.mockImplementation(
+					async () =>
+						new Response("ok", { headers: { "Cache-Control": cacheControl } }),
+				);
+				const { cache, event, config } = setupMocks(strategyPrecache, null, tt);
+				await strategyPrecache(new Request(`${domain}/pc`), event, config);
+				await event.resolveWaitUntils();
+				equal(cache.put.callCount, puts, cacheControl);
+			}
+		},
+	);
+
+	await t.test(
+		"strategyPrecache: stored entry ignores the origin's Expires",
+		async (tt) => {
+			// `Expires: 0` is common on HTML; a precached copy must not read as
+			// stale (and be evicted or refetched) before the SW version changes.
+			const { cacheExpired, strategyPrecache } = await import("../index.js");
+			tt.mock.method(
+				globalThis,
+				"fetch",
+				async () => new Response("ok", { headers: { Expires: "0" } }),
+			);
+			const { cache, event, config } = setupMocks(strategyPrecache, null, tt);
+			const response = await strategyPrecache(
+				new Request(`${domain}/pc`),
+				event,
+				config,
+			);
+			await event.resolveWaitUntils();
+			const [, stored] = cache.put.args[0];
+			equal(cacheExpired(stored), false);
+			equal(await stored.text(), "ok");
+			equal(await response.text(), "ok");
 		},
 	);
 });
