@@ -5,7 +5,7 @@
 			"directives": {
 				"base-uri": ["none"],
 				"connect-src": ["self"],
-				"default-src": ["report-sample", "'report-sha256'"],
+				"default-src": ["report-sample", "report-sha256"],
 				"form-action": ["self"],
 				"frame-ancestors": ["none"],
 				"img-src": ["self"],
@@ -14,17 +14,16 @@
 				"report-uri": [
 					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
 				],
-				"require-trusted-types-for": ["script"],
-				"script-src": ["self", "report-sample", "'report-sha256'"],
-				"script-src-attr": ["report-sample", "'report-sha256'"],
-				"style-src": ["self", "report-sample", "'report-sha256'"],
-				"style-src-attr": ["report-sample", "'report-sha256'"],
+				"script-src": ["self", "report-sample", "report-sha256"],
+				"script-src-attr": ["report-sample", "report-sha256"],
+				"style-src": ["self", "report-sample", "report-sha256"],
+				"style-src-attr": ["report-sample", "report-sha256"],
 				"upgrade-insecure-requests": true,
 				"worker-src": ["self"]
 			},
 			"reportOnly": {
 				"base-uri": ["none"],
-				"default-src": ["report-sample", "'report-sha256'"],
+				"default-src": ["report-sample", "report-sha256"],
 				"form-action": ["none"],
 				"frame-ancestors": ["none"],
 				"img-src": ["self"],
@@ -33,8 +32,9 @@
 					"https://1e8fd094-ae95-51c4-a4b5-cff9001c7003.report-to.org"
 				],
 				"require-trusted-types-for": ["script"],
-				"script-src-elem": ["self", "report-sample", "'report-sha256'"],
-				"style-src-elem": ["self", "report-sample", "'report-sha256'"]
+				"script-src-elem": ["self", "report-sample", "report-sha256"],
+				"style-src-elem": ["self", "report-sample", "report-sha256"],
+				"trusted-types": ["none"]
 			}
 		}
 	}
