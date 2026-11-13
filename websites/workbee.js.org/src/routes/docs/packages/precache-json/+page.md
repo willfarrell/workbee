@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/precache-json"
 description: JSON precache manifest extractor for WorkBee.
 ---
@@ -22,19 +23,23 @@ npm install @work-bee/precache-json
 ## Usage
 
 ```js
-import { compileConfig, eventInstall, strategyCacheFirst } from "@work-bee/core";
+import {
+	compileConfig,
+	eventInstall,
+	strategyCacheFirst,
+} from "@work-bee/core";
 import { precacheExtractJSON } from "@work-bee/precache-json";
 
 const config = compileConfig({
-  precache: {
-    routes: "/precache.json",
-    extract: precacheExtractJSON,
-  },
-  strategy: strategyCacheFirst,
+	precache: {
+		routes: "/precache.json",
+		extract: precacheExtractJSON,
+	},
+	strategy: strategyCacheFirst,
 });
 
 addEventListener("install", (event) => {
-  eventInstall(event, config);
+	eventInstall(event, config);
 });
 ```
 
@@ -51,12 +56,12 @@ same route pipeline as inline `precache.routes`.
 
 `precacheExtractJSON(response)` returns `Promise<Route[]>`.
 
-| Response | Result |
-|----------|--------|
-| Status outside 200-299 (`response.ok` is false) | throws `Error` naming the status, so the install fails |
-| `Content-Type: application/json` (any parameters, e.g. `; charset=utf-8`) with an array body | the parsed array |
-| Any other `Content-Type`, or no `Content-Type` | `[]` — nothing is precached |
-| `application/json` with a non-array body | throws `TypeError` naming the received type |
+| Response                                                                                     | Result                                                 |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Status outside 200-299 (`response.ok` is false)                                              | throws `Error` naming the status, so the install fails |
+| `Content-Type: application/json` (any parameters, e.g. `; charset=utf-8`) with an array body | the parsed array                                       |
+| Any other `Content-Type`, or no `Content-Type`                                               | `[]` — nothing is precached                            |
+| `application/json` with a non-array body                                                     | throws `TypeError` naming the received type            |
 
 The media type is matched by prefix on the type/subtype only, after trimming
 and lowercasing, so `application/json5` also matches.
@@ -68,11 +73,11 @@ in another format, pass your own:
 
 ```js
 const config = compileConfig({
-  precache: {
-    routes: "/precache.txt",
-    extract: async (response) =>
-      (await response.text()).split("\n").filter(Boolean),
-  },
+	precache: {
+		routes: "/precache.txt",
+		extract: async (response) =>
+			(await response.text()).split("\n").filter(Boolean),
+	},
 });
 ```
 

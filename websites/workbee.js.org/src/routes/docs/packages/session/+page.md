@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/session"
 description: Session management middleware for WorkBee.
 ---
@@ -18,25 +19,25 @@ npm install @work-bee/core @work-bee/session
 ```js
 import { compileConfig, strategyNetworkOnly } from "@work-bee/core";
 import sessionMiddleware, {
-  getTokenAuthorization,
-  getExpiryJWT,
-  setTokenAuthorization,
+	getTokenAuthorization,
+	getExpiryJWT,
+	setTokenAuthorization,
 } from "@work-bee/session";
 
 const session = sessionMiddleware({
-  authnMethods: ["POST"],
-  authnPathPattern: /\/auth\/login$/,
-  authnGetToken: getTokenAuthorization,
-  authnGetExpiry: getExpiryJWT,
-  authzPathPattern: /\/api\//,
-  authzSetToken: setTokenAuthorization,
-  unauthnPathPattern: /\/auth\/logout$/,
-  expiryEventType: "session-expired",
+	authnMethods: ["POST"],
+	authnPathPattern: /\/auth\/login$/,
+	authnGetToken: getTokenAuthorization,
+	authnGetExpiry: getExpiryJWT,
+	authzPathPattern: /\/api\//,
+	authzSetToken: setTokenAuthorization,
+	unauthnPathPattern: /\/auth\/logout$/,
+	expiryEventType: "session-expired",
 });
 
 const config = compileConfig({
-  strategy: strategyNetworkOnly,
-  middlewares: [session],
+	strategy: strategyNetworkOnly,
+	middlewares: [session],
 });
 ```
 
@@ -48,19 +49,19 @@ After a restart, entries matching `authzPathPattern` are deleted from the route'
 
 ## Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `authnMethods` | `string[]` | `["POST"]` | HTTP methods of the login request |
-| `authnPathPattern` | `RegExp` | — | Pattern matching the login endpoint. Only responses from the ServiceWorker's origin or `authzAllowedOrigins` are read |
-| `authnGetToken` | `(response) => string` | `getTokenAuthorization` | Extracts the token from the login response. No session starts if it returns a falsy value |
-| `authnGetExpiry` | `(response, token) => number` | 12 hours | Returns the time until the session expires, **in milliseconds from now** (not a timestamp). Values above 2^31-1 ms (about 24.8 days) work |
-| `authzPathPattern` | `RegExp` | — | Pattern matching requests that get the token |
-| `authzSetToken` | `(request, token) => Request` | `setTokenAuthorization` | Adds the token to an outgoing request |
-| `authzAllowedOrigins` | `string[]` | the ServiceWorker's origin | The token is only added to requests to these origins, even when `authzPathPattern` matches |
-| `inactivityPromptEventType` | `string` | — | Message type posted 60 s before expiry if there has been no activity in the last 60 s. Otherwise it waits until 60 s pass without activity, and is not posted if the session expires first |
-| `postMessage` | `(message) => Promise<void>` | `postMessageToFocused` | Function to send messages to clients |
-| `unauthnPathPattern` | `RegExp` | — | Pattern matching the logout endpoint |
-| `expiryEventType` | `string` | — | Message type posted when the session expires |
+| Option                      | Type                          | Default                    | Description                                                                                                                                                                                |
+| --------------------------- | ----------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `authnMethods`              | `string[]`                    | `["POST"]`                 | HTTP methods of the login request                                                                                                                                                          |
+| `authnPathPattern`          | `RegExp`                      | —                          | Pattern matching the login endpoint. Only responses from the ServiceWorker's origin or `authzAllowedOrigins` are read                                                                      |
+| `authnGetToken`             | `(response) => string`        | `getTokenAuthorization`    | Extracts the token from the login response. No session starts if it returns a falsy value                                                                                                  |
+| `authnGetExpiry`            | `(response, token) => number` | 12 hours                   | Returns the time until the session expires, **in milliseconds from now** (not a timestamp). Values above 2^31-1 ms (about 24.8 days) work                                                  |
+| `authzPathPattern`          | `RegExp`                      | —                          | Pattern matching requests that get the token                                                                                                                                               |
+| `authzSetToken`             | `(request, token) => Request` | `setTokenAuthorization`    | Adds the token to an outgoing request                                                                                                                                                      |
+| `authzAllowedOrigins`       | `string[]`                    | the ServiceWorker's origin | The token is only added to requests to these origins, even when `authzPathPattern` matches                                                                                                 |
+| `inactivityPromptEventType` | `string`                      | —                          | Message type posted 60 s before expiry if there has been no activity in the last 60 s. Otherwise it waits until 60 s pass without activity, and is not posted if the session expires first |
+| `postMessage`               | `(message) => Promise<void>`  | `postMessageToFocused`     | Function to send messages to clients                                                                                                                                                       |
+| `unauthnPathPattern`        | `RegExp`                      | —                          | Pattern matching the logout endpoint                                                                                                                                                       |
+| `expiryEventType`           | `string`                      | —                          | Message type posted when the session expires                                                                                                                                               |
 
 ## Returns
 
@@ -82,10 +83,10 @@ After a restart, entries matching `authzPathPattern` are deleted from the route'
 
 ```js
 import {
-  getTokenAuthorization,
-  getExpiryJWT,
-  getExpiryPaseto,
-  setTokenAuthorization,
+	getTokenAuthorization,
+	getExpiryJWT,
+	getExpiryPaseto,
+	setTokenAuthorization,
 } from "@work-bee/session";
 ```
 

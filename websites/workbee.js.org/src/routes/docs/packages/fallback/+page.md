@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/fallback"
 description: Fallback response middleware for WorkBee.
 ---
@@ -20,17 +21,17 @@ import { compileConfig, strategyNetworkOnly } from "@work-bee/core";
 import fallbackMiddleware from "@work-bee/fallback";
 
 const fallback = fallbackMiddleware({
-  path: "/offline.html",
-  statusCodes: [503, 504],
+	path: "/offline.html",
+	statusCodes: [503, 504],
 });
 
 const config = compileConfig({
-  // Fetched and stored during install
-  precache: {
-    routes: [{ path: "/offline.html" }],
-  },
-  strategy: strategyNetworkOnly,
-  middlewares: [fallback],
+	// Fetched and stored during install
+	precache: {
+		routes: [{ path: "/offline.html" }],
+	},
+	strategy: strategyNetworkOnly,
+	middlewares: [fallback],
 });
 ```
 
@@ -38,19 +39,19 @@ Per-status pages, using the `{status}` placeholder:
 
 ```js
 const fallback = fallbackMiddleware({
-  path: "/errors/{status}.html",
-  statusCodes: [404, 500],
+	path: "/errors/{status}.html",
+	statusCodes: [404, 500],
 });
 ```
 
 ## Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `path` | `string` | — | Required. Path of the fallback resource (should be precached). `{status}` is replaced with the failed response's status code (empty for a network error). Throws if missing or empty |
-| `pathPattern` | `RegExp` | — | When set, the fallback URL is the request URL with `pathPattern` replaced by `path` (so `$1` etc. work). When unset, `path` is used as-is |
-| `statusCodes` | `number[]` | `undefined` | Response status codes that trigger the fallback. When unset, only network errors (a rejected fetch or a missing cache entry) trigger it |
-| `fallbackStrategy` | `Strategy` | see below | Strategy used to fetch the fallback resource |
+| Option             | Type       | Default     | Description                                                                                                                                                                          |
+| ------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `path`             | `string`   | —           | Required. Path of the fallback resource (should be precached). `{status}` is replaced with the failed response's status code (empty for a network error). Throws if missing or empty |
+| `pathPattern`      | `RegExp`   | —           | When set, the fallback URL is the request URL with `pathPattern` replaced by `path` (so `$1` etc. work). When unset, `path` is used as-is                                            |
+| `statusCodes`      | `number[]` | `undefined` | Response status codes that trigger the fallback. When unset, only network errors (a rejected fetch or a missing cache entry) trigger it                                              |
+| `fallbackStrategy` | `Strategy` | see below   | Strategy used to fetch the fallback resource                                                                                                                                         |
 
 ## Returns
 

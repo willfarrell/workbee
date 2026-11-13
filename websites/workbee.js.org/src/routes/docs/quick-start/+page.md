@@ -1,4 +1,5 @@
 ---
+
 title: Quick Start
 description: Get started with WorkBee in minutes.
 ---
@@ -17,38 +18,38 @@ Create a `sw.js` file for your ServiceWorker:
 
 ```js
 import {
-  compileConfig,
-  eventInstall,
-  eventActivate,
-  eventFetch,
-  strategyCacheFirst
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyCacheFirst,
 } from "@work-bee/core";
 
 const config = compileConfig({
-  // Bump the version on each release. `purgePrefixes` lets activate delete
-  // caches left by older versions (e.g. "sw-1-img" once "sw-2-" is live).
-  cachePrefix: "sw-1-",
-  activate: { purgePrefixes: ["sw-"] },
-  routes: [
-    {
-      methods: ["GET"],
-      pathPattern: new RegExp("/img/(.+)$"),
-      cacheName: "img",
-      strategy: strategyCacheFirst,
-    },
-  ],
+	// Bump the version on each release. `purgePrefixes` lets activate delete
+	// caches left by older versions (e.g. "sw-1-img" once "sw-2-" is live).
+	cachePrefix: "sw-1-",
+	activate: { purgePrefixes: ["sw-"] },
+	routes: [
+		{
+			methods: ["GET"],
+			pathPattern: new RegExp("/img/(.+)$"),
+			cacheName: "img",
+			strategy: strategyCacheFirst,
+		},
+	],
 });
 
 addEventListener("install", (event) => {
-  eventInstall(event, config);
+	eventInstall(event, config);
 });
 
 addEventListener("activate", (event) => {
-  eventActivate(event, config);
+	eventActivate(event, config);
 });
 
 addEventListener("fetch", (event) => {
-  eventFetch(event, config);
+	eventFetch(event, config);
 });
 ```
 
@@ -58,7 +59,7 @@ In your main application code:
 
 ```js
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js");
+	navigator.serviceWorker.register("/sw.js");
 }
 ```
 
@@ -79,12 +80,12 @@ import fallbackMiddleware from "@work-bee/fallback";
 const fallback = fallbackMiddleware({ path: "/offline.html" });
 
 const config = compileConfig({
-  // Fetched and stored during install
-  precache: {
-    routes: [{ path: "/offline.html" }],
-  },
-  strategy: strategyNetworkOnly,
-  middlewares: [fallback],
+	// Fetched and stored during install
+	precache: {
+		routes: [{ path: "/offline.html" }],
+	},
+	strategy: strategyNetworkOnly,
+	middlewares: [fallback],
 });
 ```
 

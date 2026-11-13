@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      id-token: write       # mint the OIDC token tardisec verifies
-      contents: write       # push the sync branch
-      pull-requests: write  # open the PR
+      id-token: write # mint the OIDC token tardisec verifies
+      contents: write # push the sync branch
+      pull-requests: write # open the PR
     steps:
       - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:

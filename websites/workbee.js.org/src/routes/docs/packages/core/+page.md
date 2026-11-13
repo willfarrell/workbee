@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/core"
 description: Core WorkBee package with caching strategies and event handlers.
 ---
@@ -114,16 +115,21 @@ import { strategyPartition } from "@work-bee/core";
 Breaks an HTML page into parts (head, header, main, footer) that can each have their own caching strategy. Each sub-request URL is the request URL (without its hash) with the route's `pathPattern` replaced by the partition route's `path`, so `$1`-style references work. Method and headers are copied; the body is not.
 
 ```js
-import { compileConfig, pathPattern, strategyHTMLPartition, strategyNetworkFirst } from "@work-bee/core";
+import {
+	compileConfig,
+	pathPattern,
+	strategyHTMLPartition,
+	strategyNetworkFirst,
+} from "@work-bee/core";
 
 const route = {
-  pathPattern: pathPattern("(.+)\\.html$"),
-  strategy: strategyHTMLPartition(
-    compileConfig({
-      routes: [{ path: "$1.header.html" }, { path: "$1.main.html" }],
-      strategy: strategyNetworkFirst,
-    }),
-  ),
+	pathPattern: pathPattern("(.+)\\.html$"),
+	strategy: strategyHTMLPartition(
+		compileConfig({
+			routes: [{ path: "$1.header.html" }, { path: "$1.main.html" }],
+			strategy: strategyNetworkFirst,
+		}),
+	),
 };
 ```
 
@@ -171,10 +177,10 @@ Handles `backgroundfetchsuccess` (Chromium only). Stores each downloaded record 
 
 ```js
 self.addEventListener("backgroundfetchsuccess", (event) => {
-  backgroundFetchSuccessEvent(event, config);
+	backgroundFetchSuccessEvent(event, config);
 });
 self.addEventListener("backgroundfetchfail", (event) => {
-  backgroundFetchFailEvent(event); // logs the event
+	backgroundFetchFailEvent(event); // logs the event
 });
 ```
 
@@ -184,10 +190,10 @@ Returns a `message` event handler that writes `{ request, response }` from a pag
 
 ```js
 const cacheOverride = cacheOverrideEvent(config, {
-  allowedOrigins: [self.location.origin],
+	allowedOrigins: [self.location.origin],
 });
 addEventListener("message", (event) => {
-  if (event.data?.type === "cache") cacheOverride(event);
+	if (event.data?.type === "cache") cacheOverride(event);
 });
 ```
 
@@ -201,23 +207,23 @@ Any script on an allowed origin, including injected script (XSS), can write last
 
 Top-level options (all optional):
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `cachePrefix` | `string` | `"sw-"` | Prefix prepended to cache names |
-| `cacheName` | `string` | `"default"` | Cache used by the top-level strategy |
-| `strategy` | `Strategy` | `strategyNetworkOnly` | Strategy for requests no route matches |
-| `middlewares` | `Middleware[]` | `[]` | Middleware for the top level; inherited by routes |
-| `routes` | `Route[]` | `[]` | Matched in order; the first match wins |
-| `skipWaiting` | `boolean` | `true` | Call `skipWaiting()` on install |
-| `passthrough` | `boolean` | `true` | Let unmatched requests bypass the worker when the top level is the bare default (see `eventFetch`) |
-| `precache.routes` | `string[]`, `{ path }[]` or `string` | `[]` | Files to fetch on install, or a manifest URL (needs `extract`) |
-| `precache.strategy` | `Strategy` | `strategyPrecache` | Strategy used to fetch precache routes |
-| `precache.extract` | `(response) => Route[]` | — | Parses a manifest when `routes` is a URL |
-| `precache.eventType` | `string` or `false` | `false` | Message type posted once precaching finishes |
-| `precache.postMessage` | `(message) => Promise<void>` | `postMessageToFocused` | Sends the precache message |
-| `activate.eventType` | `string` or `false` | `false` | Message type posted once activate finishes |
-| `activate.postMessage` | `(message) => Promise<void>` | `postMessageToAll` | Sends the activate message |
-| `activate.purgePrefixes` | `string[]` | `[]` | Extra cache-name prefixes activate may delete (must be an array) |
+| Property                 | Type                                 | Default                | Description                                                                                        |
+| ------------------------ | ------------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `cachePrefix`            | `string`                             | `"sw-"`                | Prefix prepended to cache names                                                                    |
+| `cacheName`              | `string`                             | `"default"`            | Cache used by the top-level strategy                                                               |
+| `strategy`               | `Strategy`                           | `strategyNetworkOnly`  | Strategy for requests no route matches                                                             |
+| `middlewares`            | `Middleware[]`                       | `[]`                   | Middleware for the top level; inherited by routes                                                  |
+| `routes`                 | `Route[]`                            | `[]`                   | Matched in order; the first match wins                                                             |
+| `skipWaiting`            | `boolean`                            | `true`                 | Call `skipWaiting()` on install                                                                    |
+| `passthrough`            | `boolean`                            | `true`                 | Let unmatched requests bypass the worker when the top level is the bare default (see `eventFetch`) |
+| `precache.routes`        | `string[]`, `{ path }[]` or `string` | `[]`                   | Files to fetch on install, or a manifest URL (needs `extract`)                                     |
+| `precache.strategy`      | `Strategy`                           | `strategyPrecache`     | Strategy used to fetch precache routes                                                             |
+| `precache.extract`       | `(response) => Route[]`              | —                      | Parses a manifest when `routes` is a URL                                                           |
+| `precache.eventType`     | `string` or `false`                  | `false`                | Message type posted once precaching finishes                                                       |
+| `precache.postMessage`   | `(message) => Promise<void>`         | `postMessageToFocused` | Sends the precache message                                                                         |
+| `activate.eventType`     | `string` or `false`                  | `false`                | Message type posted once activate finishes                                                         |
+| `activate.postMessage`   | `(message) => Promise<void>`         | `postMessageToAll`     | Sends the activate message                                                                         |
+| `activate.purgePrefixes` | `string[]`                           | `[]`                   | Extra cache-name prefixes activate may delete (must be an array)                                   |
 
 `precache` inherits `cachePrefix`, `cacheName` and `middlewares` from the top level; `activate` options are merged with the defaults above.
 
@@ -225,15 +231,15 @@ Top-level options (all optional):
 
 Each route in the `routes` array can have these properties:
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `pathPattern` | `RegExp` | — | Required for matched routes. Tested against the full request URL |
-| `path` | `string` | — | Sub-request path for partition routes, which are never matched |
-| `methods` | `string[]` | inherited, else `["GET"]` | HTTP methods this route handles |
-| `cacheName` | `string` | inherited (`"default"`) | Name for the cache storage |
-| `cachePrefix` | `string` | inherited (`"sw-"`) | Prefix prepended to cache names |
-| `strategy` | `Strategy` | inherited (`strategyNetworkOnly`) | Caching strategy for this route |
-| `middlewares` | `Middleware[]` | inherited (`[]`) | Middleware to apply to this route |
+| Property      | Type           | Default                           | Description                                                      |
+| ------------- | -------------- | --------------------------------- | ---------------------------------------------------------------- |
+| `pathPattern` | `RegExp`       | —                                 | Required for matched routes. Tested against the full request URL |
+| `path`        | `string`       | —                                 | Sub-request path for partition routes, which are never matched   |
+| `methods`     | `string[]`     | inherited, else `["GET"]`         | HTTP methods this route handles                                  |
+| `cacheName`   | `string`       | inherited (`"default"`)           | Name for the cache storage                                       |
+| `cachePrefix` | `string`       | inherited (`"sw-"`)               | Prefix prepended to cache names                                  |
+| `strategy`    | `Strategy`     | inherited (`strategyNetworkOnly`) | Caching strategy for this route                                  |
+| `middlewares` | `Middleware[]` | inherited (`[]`)                  | Middleware to apply to this route                                |
 
 The cache name used is `cachePrefix + cacheName`.
 
@@ -243,7 +249,7 @@ A middleware is an object with any of `before`, `beforeNetwork`, `afterNetwork` 
 
 1. **`before`** — Runs before anything else, in registration order. Can replace the request. If it throws, the strategy is skipped and the `after` hooks get the error.
 2. **`beforeNetwork`** — Runs just before the network fetch, in registration order.
-3. *Network fetch*
+3. _Network fetch_
 4. **`afterNetwork`** — Runs after the network response (or error), in reverse registration order. Can replace the response.
 5. **`after`** — Runs last, in reverse registration order. Can replace the final response (e.g. fallback on error). Receives an `Error` when the strategy failed.
 
@@ -255,10 +261,10 @@ Configure precaching in the top-level config:
 
 ```js
 const config = compileConfig({
-  precache: {
-    routes: ["/path/to/file.html", { path: "/other/file.js" }],
-    eventType: "precache", // posts one message when all routes are done (false to disable)
-  },
+	precache: {
+		routes: ["/path/to/file.html", { path: "/other/file.js" }],
+		eventType: "precache", // posts one message when all routes are done (false to disable)
+	},
 });
 ```
 
@@ -270,10 +276,10 @@ default parser for that, so an `extract` function is required — see
 import { precacheExtractJSON } from "@work-bee/precache-json";
 
 const config = compileConfig({
-  precache: {
-    routes: "/precache.json",
-    extract: precacheExtractJSON,
-  },
+	precache: {
+		routes: "/precache.json",
+		extract: precacheExtractJSON,
+	},
 });
 ```
 

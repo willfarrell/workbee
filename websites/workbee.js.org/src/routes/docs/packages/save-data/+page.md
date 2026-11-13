@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/save-data"
 description: Save-Data header middleware for WorkBee.
 ---
@@ -23,15 +24,15 @@ import saveDataMiddleware from "@work-bee/save-data";
 const saveData = saveDataMiddleware();
 
 const config = compileConfig({
-  strategy: strategyNetworkFirst,
-  middlewares: [saveData],
+	strategy: strategyNetworkFirst,
+	middlewares: [saveData],
 });
 ```
 
 ## Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option             | Type       | Default             | Description                                              |
+| ------------------ | ---------- | ------------------- | -------------------------------------------------------- |
 | `saveDataStrategy` | `Strategy` | `strategyCacheOnly` | The strategy to use when the request has `Save-Data: on` |
 
 ## Returns

@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/inactivity"
 description: User inactivity detection middleware for WorkBee.
 ---
@@ -26,10 +27,10 @@ npm install @work-bee/core @work-bee/inactivity
 import inactivityClient from "@work-bee/inactivity/client";
 
 const cleanup = inactivityClient({
-  inactivityAllowedInMin: 30,
-  inactivityEvent: () => {
-    window.location.assign("/logout");
-  },
+	inactivityAllowedInMin: 30,
+	inactivityEvent: () => {
+		window.location.assign("/logout");
+	},
 });
 
 // Call cleanup() to stop the timer and remove all listeners
@@ -42,8 +43,8 @@ import { compileConfig, strategyNetworkFirst } from "@work-bee/core";
 import inactivityMiddleware from "@work-bee/inactivity";
 
 const config = compileConfig({
-  strategy: strategyNetworkFirst,
-  middlewares: [inactivityMiddleware()],
+	strategy: strategyNetworkFirst,
+	middlewares: [inactivityMiddleware()],
 });
 ```
 
@@ -53,16 +54,16 @@ The middleware is optional: without it, only DOM activity counts.
 
 `inactivityClient(options)` returns a cleanup function.
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `inactivityAllowedInMin` | `number` | `15` | Minutes without activity before `inactivityEvent` runs |
-| `inactivityEvent` | `() => void` | logs a warning | Called once when the limit is reached. Activity afterwards starts a new countdown |
-| `events` | `string[]` | `["load", "keydown", "mousedown", "mousemove", "scroll", "touchmove", "touchstart", "visibilitychange", "wheel"]` | DOM events (listened for on `document`) that count as activity |
+| Option                   | Type         | Default                                                                                                           | Description                                                                       |
+| ------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `inactivityAllowedInMin` | `number`     | `15`                                                                                                              | Minutes without activity before `inactivityEvent` runs                            |
+| `inactivityEvent`        | `() => void` | logs a warning                                                                                                    | Called once when the limit is reached. Activity afterwards starts a new countdown |
+| `events`                 | `string[]`   | `["load", "keydown", "mousedown", "mousemove", "scroll", "touchmove", "touchstart", "visibilitychange", "wheel"]` | DOM events (listened for on `document`) that count as activity                    |
 
 ## Middleware Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| Option        | Type                         | Default            | Description                                      |
+| ------------- | ---------------------------- | ------------------ | ------------------------------------------------ |
 | `postMessage` | `(message) => Promise<void>` | `postMessageToAll` | Sends `{ type: "inactivity-activity" }` to pages |
 
 Returns `{ before, after }`.

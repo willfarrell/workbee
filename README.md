@@ -102,20 +102,20 @@ These changes are in the working tree and not yet in a published release.
 WorkBee requires [ServiceWorker](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) and [Cache API](https://developer.mozilla.org/en-US/docs/Web/API/Cache) support.
 
 | Browser | Minimum Version |
-|---------|----------------|
-| Chrome  | 85+            |
-| Edge    | 85+            |
-| Firefox | 80+            |
-| Safari  | 15.4+          |
-| Opera   | 71+            |
+| ------- | --------------- |
+| Chrome  | 85+             |
+| Edge    | 85+             |
+| Firefox | 80+             |
+| Safari  | 15.4+           |
+| Opera   | 71+             |
 
 Some packages need more than that:
 
-| Package / feature | Also needs | Notes |
-|---------|----------------|-------|
-| `@work-bee/offline` | [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) | Supported in all browsers listed above. |
-| `@work-bee/offline/client`, `@work-bee/inactivity/client` | `navigator.serviceWorker` in the page | Run in the page, not the ServiceWorker. |
-| `@work-bee/save-data` | A browser that sends the `Save-Data` header | Only Chromium browsers (Chrome/Edge/Opera) send it. Elsewhere the middleware never switches strategy. |
+| Package / feature                                          | Also needs                                                                                                       | Notes                                                                                                                        |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `@work-bee/offline`                                        | [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)                                      | Supported in all browsers listed above.                                                                                      |
+| `@work-bee/offline/client`, `@work-bee/inactivity/client`  | `navigator.serviceWorker` in the page                                                                            | Run in the page, not the ServiceWorker.                                                                                      |
+| `@work-bee/save-data`                                      | A browser that sends the `Save-Data` header                                                                      | Only Chromium browsers (Chrome/Edge/Opera) send it. Elsewhere the middleware never switches strategy.                        |
 | `backgroundFetchSuccessEvent` / `backgroundFetchFailEvent` | [Background Fetch](https://developer.mozilla.org/en-US/docs/Web/API/Background_Fetch_API) and `BroadcastChannel` | Background Fetch is Chromium-only (Chrome/Edge/Opera). Firefox and Safari never fire these events; use normal fetches there. |
 
 ## Getting Started
@@ -276,11 +276,11 @@ sequenceDiagram
 Always returns a synthetic `504 Gateway Timeout` response without hitting cache or network. Useful for cheaply short-circuiting a route you do not want the ServiceWorker to handle.
 
 ```javascript
-import { strategyIgnore } from '@work-bee/core'
+import { strategyIgnore } from "@work-bee/core";
 
 const config = {
-  strategy: strategyIgnore
-}
+	strategy: strategyIgnore,
+};
 ```
 
 ### Cache First Ignore
@@ -288,11 +288,11 @@ const config = {
 Tries the cache; if the entry is missing or expired, returns the same synthetic `504` as `strategyIgnore` instead of hitting the network. Use when you want to serve only primed cache and fail fast otherwise.
 
 ```javascript
-import { strategyCacheFirstIgnore } from '@work-bee/core'
+import { strategyCacheFirstIgnore } from "@work-bee/core";
 
 const config = {
-  strategy: strategyCacheFirstIgnore
-}
+	strategy: strategyCacheFirstIgnore,
+};
 ```
 
 ### Static
@@ -300,16 +300,16 @@ const config = {
 Returns a pre-built `Response` (cloned on each call) for every request. Passing an `Error` instead makes the strategy reject — the failure flows through the normal error-path middleware.
 
 ```javascript
-import { strategyStatic } from '@work-bee/core'
+import { strategyStatic } from "@work-bee/core";
 
-const offlineResponse = new Response('offline', {
-  status: 503,
-  headers: { 'Content-Type': 'text/plain' }
-})
+const offlineResponse = new Response("offline", {
+	status: 503,
+	headers: { "Content-Type": "text/plain" },
+});
 
 const config = {
-  strategy: strategyStatic(offlineResponse)
-}
+	strategy: strategyStatic(offlineResponse),
+};
 ```
 
 ### StaleWhileRevalidate
@@ -472,69 +472,87 @@ https://github.com/mdn/serviceworker-cookbook
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkFirst } from '@work-bee/core'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyNetworkFirst,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyNetworkFirst
-})
+	strategy: strategyNetworkFirst,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### [Cache only](https://serviceworke.rs/strategy-cache-only.html)
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheOnly } from '@work-bee/core'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyCacheOnly,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyCacheOnly
-})
+	strategy: strategyCacheOnly,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### [Cache and update](https://serviceworke.rs/strategy-cache-and-update.html)
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyStaleWhileRevalidate } from '@work-bee/core'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyStaleWhileRevalidate,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyStaleWhileRevalidate
-})
+	strategy: strategyStaleWhileRevalidate,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### Stale if error
@@ -543,23 +561,29 @@ Tries the network, stores successful responses that have a freshness lifetime (`
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyStaleIfError } from '@work-bee/core'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyStaleIfError,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyStaleIfError
-})
+	strategy: strategyStaleIfError,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### [Cache, update and refresh](https://serviceworke.rs/strategy-cache-update-and-refresh.html)
@@ -570,33 +594,39 @@ Not yet implemented.
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkOnly } from '@work-bee/core'
-import fallbackMiddleware from '@work-bee/fallback'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyNetworkOnly,
+} from "@work-bee/core";
+import fallbackMiddleware from "@work-bee/fallback";
 
-const fallback = fallbackMiddleware({ path: '/path/to/fallback' })
+const fallback = fallbackMiddleware({ path: "/path/to/fallback" });
 const config = compileConfig({
-  precache: {
-    routes: [
-      {
-        path: '/path/to/fallback'
-      }
-    ]
-  },
-  strategy: strategyNetworkOnly,
-  middlewares: [fallback]
-})
+	precache: {
+		routes: [
+			{
+				path: "/path/to/fallback",
+			},
+		],
+	},
+	strategy: strategyNetworkOnly,
+	middlewares: [fallback],
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 ### Offline
@@ -605,36 +635,42 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyNetworkOnly } from '@work-bee/core'
-import fallbackMiddleware from '@work-bee/fallback'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyNetworkOnly,
+} from "@work-bee/core";
+import fallbackMiddleware from "@work-bee/fallback";
 
 const fallback = fallbackMiddleware({
-  path: '/path/to/offline',
-  statusCodes: [503, 504] // or a thrown Error (e.g. offline network failure)
-})
+	path: "/path/to/offline",
+	statusCodes: [503, 504], // or a thrown Error (e.g. offline network failure)
+});
 const config = compileConfig({
-  precache: {
-    routes: [
-      {
-        path: '/path/to/offline'
-      }
-    ]
-  },
-  strategy: strategyNetworkOnly,
-  middlewares: [fallback]
-})
+	precache: {
+		routes: [
+			{
+				path: "/path/to/offline",
+			},
+		],
+	},
+	strategy: strategyNetworkOnly,
+	middlewares: [fallback],
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### [Offline Status](https://serviceworke.rs/offline-status.html)
@@ -673,29 +709,35 @@ addEventListener('fetch', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
-import { precacheExtractJSON } from '@work-bee/precache-json'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyCacheFirst,
+} from "@work-bee/core";
+import { precacheExtractJSON } from "@work-bee/precache-json";
 
 const config = compileConfig({
-  precache: {
-    routes: '/path/to/precache.json',
-    // Required when `routes` is a URL — core ships no default parser.
-    extract: precacheExtractJSON
-  },
-  strategy: strategyCacheFirst
-})
+	precache: {
+		routes: "/path/to/precache.json",
+		// Required when `routes` is a URL — core ships no default parser.
+		extract: precacheExtractJSON,
+	},
+	strategy: strategyCacheFirst,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 ### Beyond Offline
@@ -726,37 +768,43 @@ Not yet implemented.
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
-import offlineMiddleware from '@work-bee/offline'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyCacheFirst,
+} from "@work-bee/core";
+import offlineMiddleware from "@work-bee/offline";
 
-const offline = offlineMiddleware({ pollDelay: 0 })
+const offline = offlineMiddleware({ pollDelay: 0 });
 const config = compileConfig({
-  strategy: strategyCacheFirst,
-  middlewares: [offline]
-})
+	strategy: strategyCacheFirst,
+	middlewares: [offline],
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 
 // Sent by `@work-bee/offline/client` when the page comes back online
-addEventListener('message', (event) => {
-  if (event.data?.type === 'online') {
-    event.waitUntil(offline.postMessageEvent())
-  }
-  // Queued requests replay with whatever cookies are current, so drop them on logout
-  if (event.data?.type === 'logout') {
-    event.waitUntil(offline.clear())
-  }
-})
+addEventListener("message", (event) => {
+	if (event.data?.type === "online") {
+		event.waitUntil(offline.postMessageEvent());
+	}
+	// Queued requests replay with whatever cookies are current, so drop them on logout
+	if (event.data?.type === "logout") {
+		event.waitUntil(offline.clear());
+	}
+});
 ```
 
 ### Performance
@@ -765,23 +813,29 @@ addEventListener('message', (event) => {
 
 ```javascript
 /* eslint-env: serviceworker */
-import { compileConfig, eventInstall, eventActivate, eventFetch, strategyCacheFirst } from '@work-bee/core'
+import {
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	strategyCacheFirst,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyCacheFirst
-})
+	strategy: strategyCacheFirst,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 ```
 
 #### [Render Store](https://serviceworke.rs/render-store.html)
@@ -789,58 +843,60 @@ addEventListener('fetch', (event) => {
 ```javascript
 /* eslint-env: serviceworker */
 import {
-  compileConfig,
-  eventInstall,
-  eventActivate,
-  eventFetch,
-  cacheOverrideEvent,
-  strategyNetworkFirst
-} from '@work-bee/core'
+	compileConfig,
+	eventInstall,
+	eventActivate,
+	eventFetch,
+	cacheOverrideEvent,
+	strategyNetworkFirst,
+} from "@work-bee/core";
 
 const config = compileConfig({
-  strategy: strategyNetworkFirst
-})
+	strategy: strategyNetworkFirst,
+});
 
-addEventListener('install', (event) => {
-  eventInstall(event, config)
-})
+addEventListener("install", (event) => {
+	eventInstall(event, config);
+});
 
-addEventListener('activate', (event) => {
-  eventActivate(event, config)
-})
+addEventListener("activate", (event) => {
+	eventActivate(event, config);
+});
 
-addEventListener('fetch', (event) => {
-  eventFetch(event, config)
-})
+addEventListener("fetch", (event) => {
+	eventFetch(event, config);
+});
 
 // `allowedOrigins` is mandatory. A ServiceWorker only receives messages from
 // same-origin pages, so this is not a defence against script on your own origin.
-const cacheOverride = cacheOverrideEvent(config, { allowedOrigins: [self.location.origin] })
+const cacheOverride = cacheOverrideEvent(config, {
+	allowedOrigins: [self.location.origin],
+});
 
-addEventListener('message', (event) => {
-  /* event.data = {
+addEventListener("message", (event) => {
+	/* event.data = {
     type: 'cache',
     request: '/path/to/template', // URL string (Request objects can't be posted)
     response: '<p>rendered html</p>', // body string (Response objects can't be posted)
     headers: { 'Content-Type': 'text/html; charset=utf-8' } // optional
   }*/
-  if (event.data?.type === 'cache') {
-    // Pass the whole event: the handler reads event.source.url to check the
-    // sender's origin, and calls event.waitUntil itself.
-    cacheOverride(event)
-  }
-})
+	if (event.data?.type === "cache") {
+		// Pass the whole event: the handler reads event.source.url to check the
+		// sender's origin, and calls event.waitUntil itself.
+		cacheOverride(event);
+	}
+});
 ```
 
 From the page:
 
 ```javascript
 navigator.serviceWorker.controller.postMessage({
-  type: 'cache',
-  request: '/path/to/template',
-  response: document.querySelector('main').outerHTML,
-  headers: { 'Content-Type': 'text/html; charset=utf-8' }
-})
+	type: "cache",
+	request: "/path/to/template",
+	response: document.querySelector("main").outerHTML,
+	headers: { "Content-Type": "text/html; charset=utf-8" },
+});
 ```
 
 A string `response` is stored as a `200` response with the posted `headers`. Without a `Content-Type` it gets the browser default for a string body (`text/plain;charset=UTF-8`), so set it for HTML.

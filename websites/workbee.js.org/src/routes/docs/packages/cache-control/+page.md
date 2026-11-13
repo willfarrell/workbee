@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/cache-control"
 description: HTTP Cache-Control header middleware for WorkBee.
 ---
@@ -20,20 +21,20 @@ import { compileConfig, strategyCacheFirst } from "@work-bee/core";
 import cacheControlMiddleware from "@work-bee/cache-control";
 
 const cacheControl = cacheControlMiddleware({
-  cacheControl: "max-age=60",
+	cacheControl: "max-age=60",
 });
 
 const config = compileConfig({
-  strategy: strategyCacheFirst,
-  middlewares: [cacheControl],
+	strategy: strategyCacheFirst,
+	middlewares: [cacheControl],
 });
 ```
 
 ## Options
 
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `cacheControl` | `string` | Yes | `Cache-Control` value to set (e.g. `"max-age=60"`). Throws if missing or empty |
+| Option         | Type     | Required | Description                                                                    |
+| -------------- | -------- | -------- | ------------------------------------------------------------------------------ |
+| `cacheControl` | `string` | Yes      | `Cache-Control` value to set (e.g. `"max-age=60"`). Throws if missing or empty |
 
 ## Returns
 

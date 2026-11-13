@@ -1,4 +1,5 @@
 ---
+
 title: "@work-bee/logger"
 description: Logging middleware for WorkBee.
 ---
@@ -22,21 +23,21 @@ import loggerMiddleware from "@work-bee/logger";
 const logger = loggerMiddleware();
 
 const config = compileConfig({
-  strategy: strategyCacheFirst,
-  middlewares: [logger],
+	strategy: strategyCacheFirst,
+	middlewares: [logger],
 });
 ```
 
 ## Options
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `logger` | `(when, request, response, event, config, redactHeaders) => void` | structured formatter (see below) | Custom logging function. `response` is `undefined` in `before` / `beforeNetwork` and may be an `Error` after a failure |
-| `redactHeaders` | `string[]` | `["authorization", "cookie", "set-cookie", "proxy-authorization"]` | Lower-case header names whose values the default logger replaces with `"[REDACTED]"`. Passed to a custom `logger` as its 6th argument |
-| `runOnBefore` | `boolean` | `true` | Log during the `before` middleware phase |
-| `runOnBeforeNetwork` | `boolean` | `true` | Log during the `beforeNetwork` phase |
-| `runOnAfterNetwork` | `boolean` | `true` | Log during the `afterNetwork` phase |
-| `runOnAfter` | `boolean` | `true` | Log during the `after` phase |
+| Option               | Type                                                              | Default                                                            | Description                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `logger`             | `(when, request, response, event, config, redactHeaders) => void` | structured formatter (see below)                                   | Custom logging function. `response` is `undefined` in `before` / `beforeNetwork` and may be an `Error` after a failure                |
+| `redactHeaders`      | `string[]`                                                        | `["authorization", "cookie", "set-cookie", "proxy-authorization"]` | Lower-case header names whose values the default logger replaces with `"[REDACTED]"`. Passed to a custom `logger` as its 6th argument |
+| `runOnBefore`        | `boolean`                                                         | `true`                                                             | Log during the `before` middleware phase                                                                                              |
+| `runOnBeforeNetwork` | `boolean`                                                         | `true`                                                             | Log during the `beforeNetwork` phase                                                                                                  |
+| `runOnAfterNetwork`  | `boolean`                                                         | `true`                                                             | Log during the `afterNetwork` phase                                                                                                   |
+| `runOnAfter`         | `boolean`                                                         | `true`                                                             | Log during the `after` phase                                                                                                          |
 
 The default logger calls `console.log(when, url, strategyName, details)`, where `details` is `{ url, method, status, statusText, requestHeaders, responseHeaders, strategy }` with the `redactHeaders` values replaced. A custom `logger` gets the raw request and response, so redact there yourself if you log headers.
 

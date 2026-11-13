@@ -413,7 +413,7 @@ jobs:
 
   # https://github.com/trufflesecurity/trufflehog
   trufflehog:
-    name: 'TruffleHog: secrets'
+    name: "TruffleHog: secrets"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -448,7 +448,7 @@ jobs:
 
   # https://github.com/gitleaks/gitleaks-action
   gitleaks:
-    name: 'gitleaks: secrets'
+    name: "gitleaks: secrets"
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

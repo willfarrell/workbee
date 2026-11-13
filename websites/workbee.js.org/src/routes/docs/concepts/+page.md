@@ -1,4 +1,5 @@
 ---
+
 title: Concepts
 description: Architecture and core concepts of WorkBee.
 ---
@@ -24,20 +25,20 @@ Reverse order means the first middleware in `middlewares` wraps the others: its 
 
 Strategies determine how a request is fulfilled:
 
-| Strategy | Behavior |
-|----------|----------|
-| `strategyNetworkOnly` | Always fetches from network (the default) |
-| `strategyCacheOnly` | Only returns cached responses; a miss rejects |
-| `strategyNetworkFirst` | Tries network, falls back to cache on a network error |
-| `strategyCacheFirst` | Returns a fresh cached response; otherwise uses `strategyNetworkFirst` |
-| `strategyStaleWhileRevalidate` | Returns the cached response immediately; refreshes it in the background if it has expired |
-| `strategyStaleIfError` | Like `strategyNetworkFirst`, and also serves the cached copy when the network returns a 5xx |
-| `strategyPrecache` | Fetches and stores every 2xx response (except `206` and `Vary: *`), ignoring `Cache-Control`. The default for `precache` |
-| `strategyIgnore` | Returns a synthetic `504` response |
-| `strategyCacheFirstIgnore` | Tries cache, returns `504` if missing or expired |
-| `strategyStatic(response)` | Always returns a clone of the given response (rejects if given an `Error`) |
-| `strategyHTMLPartition(options)` | Breaks HTML into parts with individual strategies |
-| `strategyPartition(options)` | Breaks request into sub-requests with individual strategies |
+| Strategy                         | Behavior                                                                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `strategyNetworkOnly`            | Always fetches from network (the default)                                                                                |
+| `strategyCacheOnly`              | Only returns cached responses; a miss rejects                                                                            |
+| `strategyNetworkFirst`           | Tries network, falls back to cache on a network error                                                                    |
+| `strategyCacheFirst`             | Returns a fresh cached response; otherwise uses `strategyNetworkFirst`                                                   |
+| `strategyStaleWhileRevalidate`   | Returns the cached response immediately; refreshes it in the background if it has expired                                |
+| `strategyStaleIfError`           | Like `strategyNetworkFirst`, and also serves the cached copy when the network returns a 5xx                              |
+| `strategyPrecache`               | Fetches and stores every 2xx response (except `206` and `Vary: *`), ignoring `Cache-Control`. The default for `precache` |
+| `strategyIgnore`                 | Returns a synthetic `504` response                                                                                       |
+| `strategyCacheFirstIgnore`       | Tries cache, returns `504` if missing or expired                                                                         |
+| `strategyStatic(response)`       | Always returns a clone of the given response (rejects if given an `Error`)                                               |
+| `strategyHTMLPartition(options)` | Breaks HTML into parts with individual strategies                                                                        |
+| `strategyPartition(options)`     | Breaks request into sub-requests with individual strategies                                                              |
 
 The network strategies only store a response when it has a freshness lifetime: `Cache-Control: max-age` (minus the `Age` header) is converted into an `Expires` header, or an existing `Expires` is kept. `s-maxage` is ignored because a ServiceWorker cache is private. Responses without either header, `206` responses and `Vary: *` responses are not stored. [@work-bee/cache-control](/docs/packages/cache-control) can set `Cache-Control` for you.
 
@@ -56,14 +57,14 @@ Cache entries are keyed by URL plus only the request headers named in the respon
 import { compileConfig, strategyCacheFirst } from "@work-bee/core";
 
 const config = compileConfig({
-  cachePrefix: "v1-",
-  routes: [
-    {
-      pathPattern: new RegExp("/api/(.+)$"),
-      cacheName: "api",
-      strategy: strategyCacheFirst,
-    },
-  ],
+	cachePrefix: "v1-",
+	routes: [
+		{
+			pathPattern: new RegExp("/api/(.+)$"),
+			cacheName: "api",
+			strategy: strategyCacheFirst,
+		},
+	],
 });
 ```
 
@@ -77,11 +78,11 @@ import loggerMiddleware from "@work-bee/logger";
 import fallbackMiddleware from "@work-bee/fallback";
 
 const config = compileConfig({
-  strategy: strategyNetworkFirst,
-  middlewares: [
-    loggerMiddleware(),
-    fallbackMiddleware({ path: "/offline.html" }),
-  ],
+	strategy: strategyNetworkFirst,
+	middlewares: [
+		loggerMiddleware(),
+		fallbackMiddleware({ path: "/offline.html" }),
+	],
 });
 ```
 
@@ -93,9 +94,9 @@ import offlineMiddleware from "@work-bee/offline";
 const offline = offlineMiddleware({ pollDelay: 0 });
 
 addEventListener("message", (event) => {
-  if (event.data?.type === "online") {
-    event.waitUntil(offline.postMessageEvent());
-  }
+	if (event.data?.type === "online") {
+		event.waitUntil(offline.postMessageEvent());
+	}
 });
 ```
 
@@ -105,10 +106,10 @@ Resources listed in `precache.routes` are fetched and stored during the `install
 
 ```js
 const config = compileConfig({
-  precache: {
-    routes: ["/offline.html", "/styles.css"],
-    eventType: "precache", // posts one message when all routes are done (false to disable)
-  },
+	precache: {
+		routes: ["/offline.html", "/styles.css"],
+		eventType: "precache", // posts one message when all routes are done (false to disable)
+	},
 });
 ```
 
@@ -120,8 +121,8 @@ If you put a version in the prefix, add the unversioned part to `purgePrefixes`,
 
 ```js
 const config = compileConfig({
-  cachePrefix: "sw-2-",
-  activate: { purgePrefixes: ["sw-"] },
+	cachePrefix: "sw-2-",
+	activate: { purgePrefixes: ["sw-"] },
 });
 ```
 
