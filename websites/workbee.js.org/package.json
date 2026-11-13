@@ -25,18 +25,18 @@
 		"mdast-util-to-string": "4.0.0"
 	},
 	"devDependencies": {
-		"@sveltejs/adapter-cloudflare": "^8.0.0",
-		"@sveltejs/kit": "^3.1.0",
+		"@sveltejs/adapter-cloudflare": "^8.0.2",
+		"@sveltejs/kit": "^3.1.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@willfarrell-ds/cli": "0.0.0-beta.2",
 		"mdsvex": "^0.12.0",
-		"svelte": "^5.57.2",
+		"svelte": "^5.57.3",
 		"svgo": "^4.1.0",
-		"unist-util-visit": "^5.1.0",
-		"vite": "^8.3.4",
+		"unist-util-visit": "^5.2.0",
+		"vite": "^8.3.5",
 		"vite-plugin-mkcert": "^2.0.0",
 		"vite-plugin-sri": "^0.0.2",
-		"wrangler": "^4.151.0"
+		"wrangler": "^4.156.0"
 	},
 	"imports": {
 		"#components/*": "./src/components/*",
