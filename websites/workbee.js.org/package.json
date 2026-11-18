@@ -19,7 +19,7 @@
 		"release:deploy": "wrangler pages deploy"
 	},
 	"dependencies": {
-		"@willfarrell-ds/svelte": "0.0.0-beta.2",
+		"@willfarrell-ds/svelte": "0.0.0-beta.3",
 		"@willfarrell-ds/vanilla": "0.0.0-beta.2",
 		"hast-util-to-string": "3.0.1",
 		"mdast-util-to-string": "4.0.0"
